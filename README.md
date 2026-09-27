@@ -29,7 +29,7 @@ This capstone project focuses on detecting runtime faults in a mobile robot, deg
 - [x] Cleanup script to prevent stale ROS2 test nodes between runs
 
 ### Next
-- [ ] Add default zero-command / watchdog behavior when navigation commands disappear
+- [x] Default idle-stop behavior when navigation commands disappear
 - [ ] Odometry anomaly detection
 - [ ] Control latency detection
 - [ ] Navigation node failure detection
@@ -76,6 +76,32 @@ Observed transition timing in one simulation run:
 - 17.80 s: NORMAL restored
 - 18.05 s: normal velocity output restored
 - 18.15 s: robot motion resumed
+
+
+## Navigation Command Loss Safety
+
+A low-priority `idle_stop` source now publishes zero velocity continuously.
+
+Priority order:
+
+1. `/cmd_vel_safety` — priority 255
+2. `/cmd_vel_nav` — priority 10
+3. `/cmd_vel_idle_stop` — priority 1
+
+This prevents stale non-zero velocity commands from being held when the navigation command publisher disappears.
+
+| Phase | `/cmd_vel_nav` | Final `/cmd_vel` | Odom vx | Motion |
+|---|---:|---:|---:|---:|
+| Before nav loss | 0.20 m/s | 0.20 m/s | 0.200 m/s | 19.7 cm/s |
+| Nav publisher removed | no messages | 0.00 m/s | 0.000 m/s | 0.0 mm/s |
+| Nav publisher restored | 0.20 m/s | 0.20 m/s | 0.200 m/s | 19.7 cm/s |
+| LiDAR CRITICAL | 0.20 m/s | 0.00 m/s | 0.000 m/s | 0.0 mm/s |
+
+The full Fault 1 regression suite currently contains 23 checks and has passed in both GUI and headless simulation.
+
+## Test Process Cleanup
+
+Simulation runs are launched in their own process group. Cleanup now terminates only the process group created by the current test run, avoiding broad `pkill -f` matching. PGID tracking files are retained until the target group has actually exited.
 
 ## Planned Architecture
 
@@ -125,4 +151,5 @@ Concepts such as fault detection, degraded operation, and minimal-risk behavior 
 - **Milestone 1:** TurtleBot3 + Gazebo simulation baseline — complete
 - **Milestone 2:** LiDAR dropout detection and safe stop — complete
 - **Milestone 3:** Independent safety arbitration with `twist_mux` — complete
-- **Milestone 4:** Navigation-command timeout safety behavior — next
+- **Milestone 4:** Navigation-command timeout safety behavior — complete
+- **Milestone 5:** Odometry anomaly detection — next
