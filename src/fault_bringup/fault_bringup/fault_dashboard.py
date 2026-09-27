@@ -63,7 +63,7 @@ class DashboardNode(Node):
                   'scan_age': None, 'odom_vx': None, 'odom_raw_vx': None, 'odom_valid': None,
                   'latency': None, 'restarts': 0, 'pid': None, 'limit': 0.0,
                   'lidar_fault': False, 'odom_fault': False, 'delay_mode': 'NONE', 'crash_loop': False,
-                  'phase': ''}
+                  'phase': '', 'mission': None, 'drive_requested': False}
         self.t = {}   # topic -> monotonic time of last message
         self.last = {'nav_x': None, 'out_x': None}
         self.odom_invalid = 0
@@ -90,6 +90,10 @@ class DashboardNode(Node):
         self.create_subscription(Bool, 'nav_fault/crash_loop', lambda m: self.flag('crash_loop', m.data, 'Nav crash loop'), latched)
         self.create_subscription(String, 'demo/phase', self.on_phase, latched)
         self.create_subscription(String, 'demo/event', lambda m: self.event(m.data), 10)
+        self.create_subscription(String, 'mission/status', self.on_mission, latched)
+        self.create_subscription(String, 'mission/event', lambda m: self.event(f'[mission] {m.data}'), 10)
+        self.create_subscription(Bool, 'nav_source/active_request',
+                                 lambda m: self.v.__setitem__('drive_requested', m.data), latched)
         self.clients_ = {}
         self.pub_drive = None
 
@@ -143,6 +147,12 @@ class DashboardNode(Node):
             self.v['phase'] = msg.data
             if msg.data:
                 self.event(f'=== {msg.data} ===')
+
+    def on_mission(self, msg):
+        try:
+            self.v['mission'] = json.loads(msg.data)
+        except ValueError:
+            pass
 
     def age(self, key):
         return time.monotonic() - self.t[key] if key in self.t else None
@@ -215,6 +225,16 @@ class Dashboard:
         self.motion_info = tk.Label(motion, text='', font=mid, bg='#2a2a2a', fg=fg)
         self.motion_info.grid(row=2, column=0, columnspan=3, pady=(4, 0))
 
+        mission = tk.Frame(self.root, bg='#2a2a2a', padx=10, pady=4)
+        mission.pack(fill='x', padx=10, pady=(0, 8))
+        self.nav_mode = tk.Label(mission, text='NAV MODE: --', font=mid, bg='#2a2a2a', fg='#8fd3ff', width=22,
+                                 anchor='w')
+        self.nav_mode.grid(row=0, column=0, rowspan=2, sticky='w')
+        self.mission_line = tk.Label(mission, text='', font=mid, bg='#2a2a2a', fg=fg, anchor='w')
+        self.mission_line.grid(row=0, column=1, sticky='w')
+        self.mission_detail = tk.Label(mission, text='', font=mono, bg='#2a2a2a', fg='#dddddd', anchor='w')
+        self.mission_detail.grid(row=1, column=1, sticky='w')
+
         controls = tk.Frame(self.root, bg=bg)
         controls.pack(fill='x', padx=10)
         self.fault_labels = {}
@@ -234,11 +254,11 @@ class Dashboard:
         tk.Button(drive, text='Stop', font=small, width=10, command=lambda: self.node.drive(False)).pack(pady=2)
 
         tk.Label(self.root, text='Event log', font=small, bg=bg, fg='#bbbbbb').pack(anchor='w', padx=12, pady=(8, 0))
-        self.log = tk.Text(self.root, height=16, font=mono, bg='#111111', fg='#dddddd', state='disabled')
+        self.log = tk.Text(self.root, height=14, font=mono, bg='#111111', fg='#dddddd', state='disabled')
         self.log.pack(fill='both', expand=True, padx=10, pady=(0, 10))
         self.shown_seq = 0
         self.snapshot_requested = False
-        self.root.geometry('1100x980+1420+40')   # right side of the screen
+        self.root.geometry('1100x1040+1420+40')   # right side of the screen
         self.root.attributes('-topmost', True)   # stay visible above the Gazebo window
         self.root.after(100, self.refresh)
 
@@ -273,6 +293,8 @@ class Dashboard:
             'motion': {k: widget(w) for k, w in self.motion.items()},
             'motion_info': self.motion_info.cget('text'),
             'fault_labels': {k: w.cget('text') for k, w in self.fault_labels.items()},
+            'nav_mode': self.nav_mode.cget('text'),
+            'mission': [self.mission_line.cget('text'), self.mission_detail.cget('text')],
             'event_log': self.log.get('1.0', 'end').strip().splitlines()[-20:],
         }
         path = os.path.expanduser('~/capstone_fault_ws/logs/dashboard_snapshot.json')
@@ -317,6 +339,26 @@ class Dashboard:
             text=f'speed limit: {"%.2f m/s" % v["limit"] if v["limit"] > 0 else "none"}     '
                  f'safety stop: {"ACTIVE" if safety else "off"}     (units m/s)',
             fg='#ff5555' if safety else '#eeeeee')
+
+        m = v['mission']
+        if m:
+            self.nav_mode.configure(text='NAV MODE: NAV2')
+            colors = {'RUNNING': '#7CFC9A', 'PAUSED': '#ff5555', 'RETRY_WAIT': '#ffb347', 'COMPLETE': '#8fd3ff',
+                      'FAILED': '#ff5555'}
+            dist = m.get('distance_remaining')
+            self.mission_line.configure(
+                text=f'Mission {m["state"]}   waypoint {m["index"]}/{m["total"]}  {m["name"]}',
+                fg=colors.get(m['state'], '#eeeeee'))
+            self.mission_detail.configure(
+                text=f'goal ({m["goal"][0]:.2f}, {m["goal"][1]:.2f})   distance '
+                     f'{"--" if dist is None else "%.2f m" % dist}   active {"yes" if m["active"] else "no"}   '
+                     f'reached {m["reached"]}/{m["total"]}   retries {m["total_retries"]}   '
+                     f'fault pauses {m["pauses"]}')
+        else:
+            self.nav_mode.configure(text='NAV MODE: MANUAL/TEST')
+            self.mission_line.configure(text='nav_command_source ' + ('driving' if v['drive_requested'] else 'idle'),
+                                        fg='#eeeeee')
+            self.mission_detail.configure(text='no Nav2 mission (constant-velocity test source)')
 
         self.fault_labels['lidar'].configure(text='fault: ' + ('ON' if v['lidar_fault'] else 'off'))
         self.fault_labels['odom'].configure(text='fault: ' + ('ON' if v['odom_fault'] else 'off'))

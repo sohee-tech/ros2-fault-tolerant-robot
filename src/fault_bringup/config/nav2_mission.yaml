@@ -1,0 +1,9 @@
+# Waypoint mission in the AMR warehouse (names from config/amr_warehouse_layout.yaml).
+# Start (0, -4) -> central intersection -> east cross aisle (around a pallet)
+#   -> north-east narrow aisle (1.0 m between racks) -> delivery zone (0, 3.7)
+nav2_mission_runner:
+  ros__parameters:
+    waypoints: [intersection, east_cross_aisle, ne_narrow_aisle, delivery_zone]
+    max_retries: 2          # per waypoint, after an ABORTED / CANCELED goal
+    retry_delay: 1.0        # s after the system is NORMAL again before re-sending
+    nav2_wait_timeout: 60.0 # s to keep re-sending a REJECTED goal while Nav2 is still starting

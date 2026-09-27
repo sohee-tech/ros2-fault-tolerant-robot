@@ -13,7 +13,7 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         *[(os.path.join('share', package_name, os.path.dirname(f)), [f])
-          for d in ('launch', 'config', 'worlds', 'models')
+          for d in ('launch', 'config', 'worlds', 'models', 'maps')
           for f in glob(os.path.join(d, '**', '*'), recursive=True)
           if os.path.isfile(f) and '__pycache__' not in f],
     ],
@@ -37,6 +37,8 @@ setup(
             'nav_command_source = fault_bringup.nav_command_source:main',
             'fault_dashboard = fault_bringup.fault_dashboard:main',
             'integrated_demo = fault_bringup.integrated_demo:main',
+            'nav2_mission_runner = fault_bringup.nav2_mission_runner:main',
+            'nav2_demo = fault_bringup.nav2_demo:main',
         ],
     },
 )

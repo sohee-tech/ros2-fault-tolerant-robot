@@ -17,6 +17,7 @@ stop_group() {
   for _ in $(seq 20); do group_alive "$pgid" || return 0; sleep 0.25; done
   kill -TERM -- -"$pgid" 2>/dev/null; sleep 1
   group_alive "$pgid" && kill -KILL -- -"$pgid" 2>/dev/null
+  for _ in $(seq 20); do group_alive "$pgid" || return 0; sleep 0.1; done
   return 0
 }
 

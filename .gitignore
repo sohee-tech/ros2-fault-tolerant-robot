@@ -36,3 +36,5 @@ results/
 results/*
 !results/final_summary.csv
 !results/final_summary.json
+!results/nav2_summary.csv
+!results/nav2_summary.json
