@@ -1,0 +1,4 @@
+# /clock publish rate (default 10 Hz is too coarse for 0.3 s age thresholds)
+gazebo:
+  ros__parameters:
+    publish_rate: 200.0

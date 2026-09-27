@@ -27,3 +27,6 @@ results/
 
 # Gazebo temp files
 .gazebo/
+
+# Runtime process-group files (run_fault1_sim.sh)
+.run/

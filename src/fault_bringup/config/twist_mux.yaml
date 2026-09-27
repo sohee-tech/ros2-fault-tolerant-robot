@@ -1,0 +1,17 @@
+# Command arbitration: safety (health_monitor) > navigation / teleop > idle_stop (zero)
+twist_mux:
+  ros__parameters:
+    use_sim_time: true
+    topics:
+      navigation:
+        topic   : cmd_vel_nav
+        timeout : 0.5
+        priority: 10
+      safety:
+        topic   : cmd_vel_safety
+        timeout : 0.25    # monitor publishes at 20 Hz while CRITICAL
+        priority: 255
+      idle_stop:
+        topic   : cmd_vel_idle_stop
+        timeout : 0.5
+        priority: 1       # default zero command when nav/safety are silent
