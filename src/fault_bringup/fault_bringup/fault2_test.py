@@ -12,7 +12,6 @@ import sys
 
 import rclpy
 from rclpy.qos import QoSProfile, DurabilityPolicy
-from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from std_msgs.msg import Bool, Float64, String
 from std_srvs.srv import Trigger
@@ -129,10 +128,8 @@ class Fault2Test(Fault1Test):
         self.check('state sequence NORMAL->DEGRADED->NORMAL (never CRITICAL)',
                    seq == ['NORMAL', 'DEGRADED', 'NORMAL'], f'({seq})')
 
-        self.nav_enabled = False
-        for _ in range(5):
-            self.pub_nav.publish(Twist())
-            self.spin_for(0.1)
+        self.set_nav(False)
+        self.spin_for(0.3)
         return all(r[1] for r in self.results)
 
 

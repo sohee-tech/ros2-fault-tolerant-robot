@@ -1,0 +1,7 @@
+# Normal driving command generator (Fault 4 target). Respawned by launch when it dies.
+nav_command_source:
+  ros__parameters:
+    use_sim_time: true
+    speed: 0.20              # forward command [m/s]
+    rate: 10.0               # command + heartbeat rate [Hz]
+    crash_loop_uptime: 0.5   # lifetime of each restart while crash loop is enabled [s]

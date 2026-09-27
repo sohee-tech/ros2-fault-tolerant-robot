@@ -1,6 +1,8 @@
 """Automated Fault 1 (LiDAR dropout) test with twist_mux arbitration.
 
 Requires fault1_sim.launch.py running.
+The nav command (0.2 m/s @10 Hz) comes from nav_command_source; the test only switches it
+on/off through the latched /nav_source/active_request topic.
 A-C: nav command loss -> idle_stop (prio 1) must stop the robot; nav restart -> drive again.
 D:   forward command (linear.x = NAV_SPEED) on /cmd_vel_nav_raw (nav source) at 10 Hz during the whole
      LiDAR fault; the safety stop must win via twist_mux, and the robot must restart on
@@ -17,7 +19,7 @@ from rclpy.qos import QoSProfile, DurabilityPolicy, qos_profile_sensor_data
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
-from std_msgs.msg import String
+from std_msgs.msg import Bool, String
 from std_srvs.srv import Trigger
 
 NAV_SPEED = 0.2
@@ -32,14 +34,14 @@ class Fault1Test(Node):
         self.nav = []                 # (sim_time, linear.x) seen on /cmd_vel_nav_raw (nav source)
         self.out = []                 # (sim_time, linear.x) seen on /cmd_vel (mux output)
         self.odom = None
-        self.nav_enabled = True
         self.create_subscription(LaserScan, 'scan', self.on_scan, qos_profile_sensor_data)
         self.create_subscription(Odometry, 'odom', self.on_odom, 10)
         self.create_subscription(Twist, 'cmd_vel_nav_raw', lambda m: self.nav.append((self.now(), m.linear.x)), 10)
         self.create_subscription(Twist, 'cmd_vel', lambda m: self.out.append((self.now(), m.linear.x)), 10)
         latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.create_subscription(String, 'health/state', self.on_state, latched)
-        self.pub_nav = self.create_publisher(Twist, 'cmd_vel_nav_raw', 10)
+        self.pub_nav_request = self.create_publisher(Bool, 'nav_source/active_request', latched)
+        self.set_nav(True)
         self.cli_enable = self.create_client(Trigger, 'lidar_fault/enable')
         self.cli_disable = self.create_client(Trigger, 'lidar_fault/disable')
         self.results = []
@@ -68,16 +70,14 @@ class Fault1Test(Node):
     def spin_for(self, sec):
         self.wait_until(lambda: False, sec)
 
+    def set_nav(self, active):
+        """Request driving on/off from nav_command_source (latched: survives its restarts)."""
+        self.pub_nav_request.publish(Bool(data=active))
+
     def wait_until(self, cond, timeout):
-        """Spin with wall timeout; keeps publishing the nav command at ~10 Hz."""
+        """Spin with wall timeout until cond() is true."""
         end = time.time() + timeout
-        next_nav = 0.0
         while time.time() < end:
-            if self.nav_enabled and self.pub_nav and time.time() >= next_nav:
-                cmd = Twist()
-                cmd.linear.x = NAV_SPEED
-                self.pub_nav.publish(cmd)
-                next_nav = time.time() + 0.1
             rclpy.spin_once(self, timeout_sec=0.01)
             if cond():
                 return True
@@ -130,10 +130,8 @@ class Fault1Test(Node):
         self.check('pre-fault: mux cmd_vel forward', s['out'] and min(s['out']) == NAV_SPEED)
         self.check('pre-fault: robot moving', s['vx'] > NAV_SPEED * 0.7, f'(odom vx={s["vx"]:.3f})')
 
-        print('== 2b. nav publisher destroyed (command loss)', flush=True)
-        self.nav_enabled = False
-        self.destroy_publisher(self.pub_nav)
-        self.pub_nav = None
+        print('== 2b. nav command stopped (command loss)', flush=True)
+        self.set_nav(False)
         t_loss = self.now()
         self.spin_for(1.5)   # > nav timeout 0.5 s + deceleration
         s = self.snapshot('nav lost')
@@ -143,9 +141,8 @@ class Fault1Test(Node):
         self.check('nav loss: robot stopped (odom)', abs(s['vx']) < 0.01 and s['moved'] < 0.01,
                    f'(vx={s["vx"]:.4f}, moved {s["moved"] * 1000:.1f} mm)')
 
-        print('== 2c. nav publisher recreated', flush=True)
-        self.pub_nav = self.create_publisher(Twist, 'cmd_vel_nav_raw', 10)
-        self.nav_enabled = True
+        print('== 2c. nav command resumed', flush=True)
+        self.set_nav(True)
         self.spin_for(1.5)
         s = self.snapshot('nav recovered')
         self.check('nav recovery: mux cmd_vel forward', s['out'] and min(s['out']) == NAV_SPEED)
@@ -206,10 +203,8 @@ class Fault1Test(Node):
                    f'(odom vx={s["vx"]:.3f})')
 
         # stop the robot at the end of the test
-        self.nav_enabled = False
-        for _ in range(5):
-            self.pub_nav.publish(Twist())
-            self.spin_for(0.1)
+        self.set_nav(False)
+        self.spin_for(0.3)
         return all(r[1] for r in self.results)
 
 

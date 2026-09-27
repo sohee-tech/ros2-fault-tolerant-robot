@@ -1,6 +1,6 @@
 """Automated Fault 3 (control latency) test. Requires fault_sim.launch.py running.
 
-The nav source (0.2 m/s @10 Hz on /cmd_vel_nav_raw) stays on for the whole test.
+The nav source (nav_command_source, 0.2 m/s @10 Hz on /cmd_vel_nav_raw) stays on for the whole test.
 A. normal: latency < 0.1 s, cmd_vel 0.2, odom 0.2, NORMAL
 B. 300 ms delay: control DEGRADED, cmd_vel 0.1, real speed 0.1
 C. 700 ms delay: control CRITICAL, safety channel -> cmd_vel 0, robot stopped
@@ -145,16 +145,13 @@ class Fault3Test(Fault2Test):
                    f'(odom_raw {s["raw_mean"]:.3f}, pose {s["speed"]:.3f})')
 
         print('== E. nav source lost (injector alive)', flush=True)
-        self.nav_enabled = False
-        self.destroy_publisher(self.pub_nav)
-        self.pub_nav = None
+        self.set_nav(False)
         self.spin_for(1.5)
         s = self.measured('nav source lost', 1.0)
         self.check('E: cmd_vel 0 via idle_stop', len(s['out']) >= 10 and max(abs(v) for v in s['out']) == 0.0)
         self.check('E: robot stopped', abs(s['raw_mean']) < 0.005 and s['moved'] < 0.005,
                    f'(moved {s["moved"] * 1000:.1f} mm)')
-        self.pub_nav = self.create_publisher(Twist, 'cmd_vel_nav_raw', 10)
-        self.nav_enabled = True
+        self.set_nav(True)
         self.spin_for(1.5)
         s = self.measured('nav source back', 1.0)
         self.check('E: restart at 0.20', abs(s['raw_mean'] - NAV_SPEED) < TOL)
@@ -174,7 +171,8 @@ class Fault3Test(Fault2Test):
         self.check('F: robot stopped', abs(s['raw_mean']) < 0.005 and s['moved'] < 0.005,
                    f'(moved {s["moved"] * 1000:.1f} mm)')
 
-        self.nav_enabled = False
+        self.set_nav(False)
+        self.spin_for(0.3)
         return all(r[1] for r in self.results)
 
 

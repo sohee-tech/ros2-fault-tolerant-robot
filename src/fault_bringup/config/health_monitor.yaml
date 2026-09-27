@@ -29,3 +29,10 @@ health_monitor:
     ctrl_samples: 3             # consecutive delayed commands for WARNING / DEGRADED
     ctrl_critical_samples: 2    # consecutive commands above critical threshold
     ctrl_recovery_time: 2.0     # latency < warning needed before NORMAL [s]
+
+    # Fault 4: navigation command source liveness (/nav/heartbeat age) [s]
+    nav_warning_age: 0.3
+    nav_degraded_age: 0.7
+    nav_critical_age: 1.2
+    nav_hold_ticks: 2           # consecutive ticks before escalating
+    nav_recovery_time: 2.0      # healthy heartbeat needed before NORMAL
