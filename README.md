@@ -16,12 +16,20 @@ This capstone project focuses on detecting runtime faults in a mobile robot, deg
 - [x] Message-age based LiDAR monitoring
 - [x] State transition: NORMAL → WARNING → DEGRADED → CRITICAL
 - [x] 2 s recovery hysteresis before returning to NORMAL
-- [x] CRITICAL-state safe stop
 - [x] Automated test passed in GUI and headless simulation
 - [x] CSV logging for fault state and runtime metrics
 
+### Independent Safety Command Path
+- [x] Separate normal command path: `/cmd_vel_nav`
+- [x] Separate safety command path: `/cmd_vel_safety`
+- [x] Priority arbitration with `twist_mux`
+- [x] Safety command overrides continuous non-zero navigation command
+- [x] Odometry-verified full stop in CRITICAL
+- [x] Automatic resume after healthy recovery window
+- [x] Cleanup script to prevent stale ROS2 test nodes between runs
+
 ### Next
-- [ ] Priority-based independent safety command path with `twist_mux`
+- [ ] Add default zero-command / watchdog behavior when navigation commands disappear
 - [ ] Odometry anomaly detection
 - [ ] Control latency detection
 - [ ] Navigation node failure detection
@@ -30,14 +38,16 @@ This capstone project focuses on detecting runtime faults in a mobile robot, deg
 
 ## Fault 1 Test Result
 
-The LiDAR fault scenario has been verified twice in simulation.
+The LiDAR fault scenario has been verified repeatedly in simulation.
 
 - Normal scan stream remained in NORMAL state
 - Fault injection stopped `/scan` forwarding
 - State changed in order: WARNING → DEGRADED → CRITICAL
-- CRITICAL state generated repeated zero-velocity safety commands
-- Odometry confirmed the robot stopped
-- After LiDAR recovery, the system stayed in CRITICAL during the recovery hold and returned to NORMAL after approximately 2 s
+- During CRITICAL, `/cmd_vel_nav` continued publishing `0.2 m/s`
+- The higher-priority safety path forced final `/cmd_vel` to `0.0 m/s`
+- Odometry confirmed zero velocity and zero movement during the measured CRITICAL interval
+- After LiDAR recovery, the system held CRITICAL during the recovery hysteresis window
+- After approximately 2 s of healthy scan data, the system returned to NORMAL and normal motion resumed automatically
 
 Current thresholds:
 
@@ -50,25 +60,44 @@ Current thresholds:
 
 A short consecutive-count hold is used for escalation, and a 2-second healthy scan window is required for recovery.
 
+### Safety Arbitration Verification
+
+| Phase | `/cmd_vel_nav` | Final `/cmd_vel` | Odom vx | Measured motion |
+|---|---:|---:|---:|---:|
+| Before fault | 0.20 m/s | 0.20 m/s | ~0.20 m/s | 20.4 cm/s |
+| CRITICAL | 0.20 m/s | 0.00 m/s | 0.000 m/s | 0.0 mm/s |
+| After NORMAL recovery | 0.20 m/s | 0.20 m/s | ~0.20 m/s | 19.7 cm/s |
+
+Observed transition timing in one simulation run:
+
+- 12.65 s: CRITICAL entered
+- 12.70 s: final velocity output became zero
+- 12.80 s: odometry reached zero velocity
+- 17.80 s: NORMAL restored
+- 18.05 s: normal velocity output restored
+- 18.15 s: robot motion resumed
+
 ## Planned Architecture
 
 ```text
-Sensors / Navigation
-        |
-        v
- Fault Monitoring
-        |
-        v
- Fault Classification
-        |
-        v
- NORMAL / WARNING / DEGRADED / CRITICAL
-        |
-        v
- Ignore / Limit / Recover / Safe Stop
+             Normal control
+              /cmd_vel_nav
+                    |
+                    v
+Sensors ---> Fault Monitor ---> Safety Manager
+   |                                |
+   |                         /cmd_vel_safety
+   |                                |
+   +-------------------------> twist_mux
+                                    |
+                                    v
+                                /cmd_vel
+                                    |
+                                    v
+                                  Robot
 ```
 
-The project will use a separate high-priority safety command path so that a stop command can override normal motion commands even when the navigation stack continues publishing velocity commands.
+The safety command path is independent from the normal motion command path. In CRITICAL state, the high-priority safety input overrides continuous non-zero navigation commands.
 
 ## Environment
 
@@ -77,6 +106,7 @@ The project will use a separate high-priority safety command path so that a stop
 - Gazebo Classic 11
 - TurtleBot3 Burger
 - Python / rclpy
+- twist_mux
 
 ## Project Goals
 
@@ -94,4 +124,5 @@ Concepts such as fault detection, degraded operation, and minimal-risk behavior 
 
 - **Milestone 1:** TurtleBot3 + Gazebo simulation baseline — complete
 - **Milestone 2:** LiDAR dropout detection and safe stop — complete
-- **Milestone 3:** Independent safety arbitration with `twist_mux` — in progress
+- **Milestone 3:** Independent safety arbitration with `twist_mux` — complete
+- **Milestone 4:** Navigation-command timeout safety behavior — next
