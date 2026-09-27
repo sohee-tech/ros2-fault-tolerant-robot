@@ -165,6 +165,74 @@ Raw runtime logs are intentionally excluded from Git.
 
 ---
 
+
+## Nav2 Lifecycle Recovery
+
+The Nav2 stack is now supervised at runtime and can recover from lifecycle faults and an actual controller process crash while the warehouse mission is active.
+
+Monitored lifecycle nodes:
+
+- `controller_server`
+- `planner_server`
+- `bt_navigator`
+- `behavior_server`
+
+The recovery manager checks lifecycle state at runtime and treats inactive, missing, or unresponsive nodes as a navigation-stack fault. The Nav2 stack state is integrated into the same system severity model used by the sensor and control faults.
+
+Representative behavior:
+
+- controller or planner deactivation is detected and escalates to CRITICAL
+- the high-priority safety path forces the robot to stop
+- the lifecycle manager is used to restore the navigation stack
+- after a healthy hold, the active waypoint mission resumes
+- an actual `controller_server` process crash is detected, respawned with a new PID, restored to ACTIVE, and the mission continues
+- a recovery-block mode verifies that failed recovery keeps the robot in CRITICAL with zero movement
+
+Validated odometry is also connected to the relevant Nav2 velocity-feedback path:
+
+```text
+Gazebo /odom_raw
+      |
+      v
+odom_fault_injector
+      |
+      v
+     /odom
+      |
+      v
+health_monitor plausibility check
+      |
+      v
+/odom_validated
+      |
+      +--> controller_server
+      +--> bt_navigator
+```
+
+Implausible odometry samples are therefore rejected before they are used as Nav2 velocity feedback, while the odom-to-base TF and AMCL localization path remain unchanged.
+
+### Recovery verification
+
+The automated Nav2 recovery test passed **42/42 checks in three consecutive runs**.
+
+Representative results:
+
+| Scenario | Result |
+|---|---|
+| Controller deactivate | CRITICAL stop → lifecycle recovery → mission resume |
+| Planner deactivate | CRITICAL stop → lifecycle recovery → mission resume |
+| Controller process crash | Old PID disappears → new PID respawned → stack ACTIVE → mission resume |
+| Recovery blocked | Max attempts reached → CRITICAL maintained → 0.0 mm movement |
+| Recovery unblocked | Stack recovers → NORMAL → mission resumes |
+| Odometry corruption | 2.5 m/s corrupted sample rejected from `/odom_validated` |
+
+The extended recovery mission reached **5/5 waypoints** and completed the Delivery mission with **0 collisions**.
+
+Selected results:
+
+- `results/nav2_recovery_summary.csv`
+- `results/nav2_recovery_summary.json`
+
 ## Dashboard
 
 The monitoring dashboard shows the system state in real time:
@@ -321,12 +389,11 @@ This runs the warehouse waypoint mission while automatically injecting Fault 1 /
 
 ### In progress
 
-- [ ] Nav2 lifecycle-node failure detection and automatic recovery
-- [ ] Feed validated odometry into the relevant Nav2 velocity-feedback path
+- [x] Nav2 lifecycle-node failure detection and automatic recovery
+- [x] Feed validated odometry into the relevant Nav2 velocity-feedback path
 
 ### Planned
 
-- [ ] Compound / simultaneous fault scenarios
 - [ ] Scenario manager for reproducible multi-fault experiments
 - [ ] Expanded quantitative evaluation
 - [ ] Optional real-robot deployment
