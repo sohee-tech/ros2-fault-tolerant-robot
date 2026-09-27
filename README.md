@@ -280,6 +280,56 @@ Final summary outputs are stored in:
 - `results/final_summary.csv`
 - `results/final_summary.json`
 
+
+## Warehouse Nav2 Autonomous Navigation
+
+The warehouse simulation has been extended from scripted velocity motion to real ROS2 Nav2 waypoint navigation.
+
+The current autonomous mission uses four waypoints through the warehouse and finishes in the Delivery zone. Nav2 velocity commands are routed through the existing fault-tolerant control pipeline rather than publishing directly to the robot:
+
+```text
+Nav2 controller / behavior
+          |
+          v
+   /cmd_vel_nav_raw
+          |
+          v
+ control_delay_injector
+          |
+          v
+     speed_limiter
+          |
+          v
+       twist_mux
+     /cmd_vel
+          |
+          v
+    TurtleBot3 Burger
+```
+
+Warehouse navigation results:
+
+- 4/4 waypoints reached
+- approximately 19 m mission distance
+- approximately 123 s mission duration
+- 0 collisions
+- measured minimum map clearance approximately 0.40 m
+- goal-position error approximately 0.13 m in a representative run
+
+Fault-tolerant Nav2 behavior has also been verified during active missions:
+
+- LiDAR dropout: CRITICAL safe stop, healthy recovery, mission continuation
+- odometry anomaly: DEGRADED speed limiting while Nav2 continues commanding motion
+- control latency: 300 ms causes DEGRADED operation, 700 ms causes CRITICAL safe stop
+- after recovery, the active waypoint mission continues to the Delivery zone
+
+The Nav2 demo passed 25/25 checks in four consecutive GUI runs while all existing Fault 1–4 regression suites remained passing.
+
+Nav2 summary outputs are stored separately from the original fault-demo summary:
+
+- `results/nav2_summary.csv`
+- `results/nav2_summary.json`
+
 ## Expansion Roadmap
 
 The current implementation establishes the fault-diagnosis and staged-response core. The project is now being expanded from a fault-monitoring prototype into a fault-tolerant autonomous mobile robot system.
@@ -382,10 +432,10 @@ If time permits, the final simulation system will be ported to a physical mobile
 - **Milestone 5:** Odometry anomaly detection — complete
 - **Milestone 6:** Control latency detection — complete
 - **Milestone 7:** Navigation node failure detection and recovery — complete
-- **Milestone 8:** Simulation environment enhancement — in progress
+- **Milestone 8:** Simulation environment enhancement — complete
 - **Milestone 9:** Fault monitoring dashboard — complete
-- **Milestone 10:** Nav2 goal / waypoint navigation integration — planned
-- **Milestone 11:** Nav2 lifecycle-based recovery — planned
+- **Milestone 10:** Nav2 goal / waypoint navigation integration — complete
+- **Milestone 11:** Nav2 lifecycle-based recovery — in progress
 - **Milestone 12:** Multi-fault scenarios and policy verification — planned
 - **Milestone 13:** Scenario manager and quantitative evaluation — planned
 - **Milestone 14:** Real-robot deployment — optional extension
