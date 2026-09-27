@@ -30,7 +30,7 @@ This capstone project focuses on detecting runtime faults in a mobile robot, deg
 
 ### Next
 - [x] Default idle-stop behavior when navigation commands disappear
-- [ ] Odometry anomaly detection
+- [x] Odometry anomaly detection
 - [ ] Control latency detection
 - [ ] Navigation node failure detection
 - [ ] Automated multi-scenario evaluation
@@ -77,6 +77,33 @@ Observed transition timing in one simulation run:
 - 18.05 s: normal velocity output restored
 - 18.15 s: robot motion resumed
 
+
+
+## Fault 2 — Odometry Anomaly
+
+Odometry faults are injected by relaying `/odom_raw` through an injector that can alter `twist.linear.x` before publishing `/odom`.
+
+Implemented checks:
+
+- physical speed bound: 0.5 m/s
+- acceleration bound: 5 m/s² using the last valid sample
+- command consistency: persistent command/odometry mismatch above 0.3 m/s
+- invalid odometry samples are rejected from `/odom_validated`
+- 5 consecutive invalid samples trigger DEGRADED
+- 2 s of healthy odometry is required before recovery to NORMAL
+
+A single injected spike to 2.5 m/s is rejected without changing the overall system state. Persistent injected anomalies trigger DEGRADED operation and reduce the commanded speed from 0.20 m/s to 0.10 m/s. After the fault is cleared and the healthy recovery window completes, the speed limit is removed and the robot returns to 0.20 m/s.
+
+| Phase | Nav command | Final command | System state |
+|---|---:|---:|---|
+| Normal | 0.20 m/s | 0.20 m/s | NORMAL |
+| Persistent odom anomaly | 0.20 m/s | 0.10 m/s | DEGRADED |
+| 1 s after fault clear | 0.20 m/s | 0.10 m/s | DEGRADED |
+| Healthy recovery complete | 0.20 m/s | 0.20 m/s | NORMAL |
+
+Automated verification:
+- Fault 2: 21/21 checks PASS in GUI and headless simulation
+- Fault 1 regression: 23/23 checks PASS
 
 ## Navigation Command Loss Safety
 
@@ -152,4 +179,5 @@ Concepts such as fault detection, degraded operation, and minimal-risk behavior 
 - **Milestone 2:** LiDAR dropout detection and safe stop — complete
 - **Milestone 3:** Independent safety arbitration with `twist_mux` — complete
 - **Milestone 4:** Navigation-command timeout safety behavior — complete
-- **Milestone 5:** Odometry anomaly detection — next
+- **Milestone 5:** Odometry anomaly detection — complete
+- **Milestone 6:** Control latency detection — next
