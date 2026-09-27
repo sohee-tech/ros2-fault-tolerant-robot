@@ -243,6 +243,43 @@ The project is designed as an implementation-focused capstone rather than a pape
 
 Concepts such as fault detection, degraded operation, and minimal-risk behavior are used as design references. This project does **not** claim ISO 26262 or SOTIF compliance.
 
+
+## Integrated Dashboard and Demo
+
+A tkinter-based monitoring dashboard and automated integrated demo are now available.
+
+The dashboard provides:
+
+- overall system state: NORMAL / WARNING / DEGRADED / CRITICAL
+- individual LiDAR, odometry, control-latency, and navigation states
+- scan age, odometry validity, measured latency, navigation PID / restart information
+- target velocity, final command, measured odometry velocity, speed-limit status, and safety-stop status
+- service buttons for all four fault types
+- event logging for state transitions and fault events
+
+The automated integrated demo executes the four fault scenarios sequentially and verifies recovery between scenarios.
+
+Validation:
+
+- integrated demo: 25/25 PASS, four consecutive GUI runs
+- Fault 1 regression: 23/23 PASS
+- Fault 2 regression: 21/21 PASS
+- Fault 3 regression: 36/36 PASS
+- Fault 4 regression: 36/36 PASS
+- no leftover project processes after demo shutdown
+
+Representative runtime behavior:
+
+- LiDAR dropout: NORMAL → WARNING → DEGRADED → CRITICAL → recovery
+- odometry anomaly: isolated spike rejected; persistent anomaly triggers DEGRADED at reduced speed
+- control latency: 300 ms causes DEGRADED, 700 ms causes CRITICAL safe stop
+- navigation process failure: actual process crash, respawn, healthy hold, then autonomous motion recovery
+
+Final summary outputs are stored in:
+
+- `results/final_summary.csv`
+- `results/final_summary.json`
+
 ## Expansion Roadmap
 
 The current implementation establishes the fault-diagnosis and staged-response core. The project is now being expanded from a fault-monitoring prototype into a fault-tolerant autonomous mobile robot system.
@@ -345,8 +382,8 @@ If time permits, the final simulation system will be ported to a physical mobile
 - **Milestone 5:** Odometry anomaly detection — complete
 - **Milestone 6:** Control latency detection — complete
 - **Milestone 7:** Navigation node failure detection and recovery — complete
-- **Milestone 8:** Simulation environment enhancement — next
-- **Milestone 9:** Fault monitoring dashboard — in progress
+- **Milestone 8:** Simulation environment enhancement — in progress
+- **Milestone 9:** Fault monitoring dashboard — complete
 - **Milestone 10:** Nav2 goal / waypoint navigation integration — planned
 - **Milestone 11:** Nav2 lifecycle-based recovery — planned
 - **Milestone 12:** Multi-fault scenarios and policy verification — planned
