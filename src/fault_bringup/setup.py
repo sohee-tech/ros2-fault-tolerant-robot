@@ -14,7 +14,8 @@ setup(
         ('share/' + package_name, ['package.xml']),
         *[(os.path.join('share', package_name, os.path.dirname(f)), [f])
           for d in ('launch', 'config', 'worlds', 'models')
-          for f in glob(os.path.join(d, '**', '*'), recursive=True) if os.path.isfile(f)],
+          for f in glob(os.path.join(d, '**', '*'), recursive=True)
+          if os.path.isfile(f) and '__pycache__' not in f],
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -34,6 +35,8 @@ setup(
             'fault3_test = fault_bringup.fault3_test:main',
             'fault4_test = fault_bringup.fault4_test:main',
             'nav_command_source = fault_bringup.nav_command_source:main',
+            'fault_dashboard = fault_bringup.fault_dashboard:main',
+            'integrated_demo = fault_bringup.integrated_demo:main',
         ],
     },
 )

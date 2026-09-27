@@ -3,7 +3,8 @@
 /cmd_vel_nav -> (clamp |linear.x| to /health/speed_limit) -> /cmd_vel_nav_limited -> twist_mux
 
 /health/speed_limit (std_msgs/Float64, transient local) is set by health_monitor:
-a value <= 0 means "no limit". Messages are relayed one-to-one, so when the nav
+a value <= 0 means "no limit". angular.z is scaled by the same factor as linear.x so the
+robot keeps the same path curvature (slower, but on the same track). Messages are relayed one-to-one, so when the nav
 source goes silent this node goes silent too and twist_mux's timeout still applies.
 """
 import rclpy
@@ -29,8 +30,10 @@ class SpeedLimiter(Node):
         self.limit = msg.data
 
     def on_cmd(self, msg):
-        if self.limit > 0.0:
-            msg.linear.x = max(-self.limit, min(self.limit, msg.linear.x))
+        if self.limit > 0.0 and abs(msg.linear.x) > self.limit:
+            scale = self.limit / abs(msg.linear.x)
+            msg.linear.x *= scale
+            msg.angular.z *= scale
         self.pub.publish(msg)
 
 

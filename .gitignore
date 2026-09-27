@@ -30,3 +30,9 @@ results/
 
 # Runtime process-group files (run_fault1_sim.sh)
 .run/
+
+# Final results: keep only the summary files (raw logs stay ignored)
+!results/
+results/*
+!results/final_summary.csv
+!results/final_summary.json

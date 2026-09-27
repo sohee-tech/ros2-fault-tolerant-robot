@@ -1,7 +1,7 @@
 #!/bin/bash
 # 자동 테스트: 시뮬레이션 실행 -> <test> 실행 -> 이번에 띄운 process group만 종료.
-# 사용: run_test.sh fault1_test|fault2_test|fault3_test|fault4_test [gui:=false]
-TEST=${1:?usage: run_test.sh fault1_test|fault2_test|fault3_test|fault4_test [launch args]}; shift
+# 사용: run_test.sh fault1_test|fault2_test|fault3_test|fault4_test|integrated_demo [gui:=false]
+TEST=${1:?usage: run_test.sh fault1_test|fault2_test|fault3_test|fault4_test|integrated_demo [launch args]}; shift
 source ~/capstone_fault_ws/env.sh
 LOG=~/capstone_fault_ws/logs; mkdir -p $LOG
 STAMP=$(date +%Y%m%d_%H%M%S)

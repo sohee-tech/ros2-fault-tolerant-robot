@@ -1,7 +1,7 @@
 """Navigation command source (the normal driving command generator).
 
 Publishes:
-  /cmd_vel_nav_raw  geometry_msgs/Twist  forward `speed` at `rate` Hz while driving is requested
+  /cmd_vel_nav_raw  geometry_msgs/Twist  `speed` (+ `angular_z`) at `rate` Hz while driving is requested
   /nav/heartbeat    std_msgs/UInt64      at `rate` Hz, always; data = this process' PID
                                          (lets the monitor detect restarts)
 Subscribes:
@@ -28,6 +28,7 @@ class NavCommandSource(Node):
         super().__init__('nav_command_source')
         p = lambda name, default: self.declare_parameter(name, default).value
         self.speed = p('speed', 0.20)
+        self.angular_z = p('angular_z', 0.0)   # != 0: drive a circle of radius speed / angular_z
         rate = p('rate', 10.0)
         self.crash_loop_uptime = p('crash_loop_uptime', 0.5)
         self.pid = os.getpid()
@@ -48,6 +49,7 @@ class NavCommandSource(Node):
         if self.active:
             cmd = Twist()
             cmd.linear.x = self.speed
+            cmd.angular.z = self.angular_z
             self.pub_cmd.publish(cmd)
 
     def on_active(self, msg):
