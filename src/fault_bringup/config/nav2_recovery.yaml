@@ -1,0 +1,11 @@
+# Nav2 lifecycle watchdog / automatic recovery (fault_monitor/nav2_recovery_manager.py)
+nav2_recovery_manager:
+  ros__parameters:
+    nodes: [controller_server, planner_server, bt_navigator, behavior_server]
+    lifecycle_manager: lifecycle_manager_navigation
+    max_recovery_attempts: 3
+    settle_timeout: 8.0         # s to wait for lifecycle_manager_navigation to finish its reset
+    service_wait_timeout: 20.0  # s to wait for a crashed server to be respawned
+    verify_time: 1.5            # s after STARTUP before checking that every server is ACTIVE
+    retry_delay: 2.0            # s between failed attempts
+    healthy_hold: 2.0           # s of a healthy stack before attempts are reset (-> IDLE)

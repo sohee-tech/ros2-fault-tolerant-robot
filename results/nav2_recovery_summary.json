@@ -1,0 +1,142 @@
+{
+  "generated": "2026-09-27T18:07:41",
+  "world": "amr_warehouse",
+  "test_passed": true,
+  "checks_passed": 42,
+  "checks_total": 42,
+  "failed_checks": [],
+  "time_base": "sim time [s] relative to the fault injection; distances from Gazebo /odom_raw",
+  "results": {
+    "mission_success": true,
+    "mission_time_s": 237.8,
+    "waypoints_reached": 5,
+    "waypoints_total": 5,
+    "waypoint_results": [
+      {
+        "name": "intersection",
+        "result": "SUCCEEDED",
+        "retries": 0,
+        "fault_resends": 1,
+        "time_s": 22.36
+      },
+      {
+        "name": "east_cross_aisle",
+        "result": "SUCCEEDED",
+        "retries": 0,
+        "fault_resends": 1,
+        "time_s": 27.45
+      },
+      {
+        "name": "ne_narrow_aisle",
+        "result": "SUCCEEDED",
+        "retries": 0,
+        "fault_resends": 1,
+        "time_s": 27.5
+      },
+      {
+        "name": "west_cross_aisle",
+        "result": "SUCCEEDED",
+        "retries": 0,
+        "fault_resends": 1,
+        "time_s": 55.89
+      },
+      {
+        "name": "delivery_zone",
+        "result": "SUCCEEDED",
+        "retries": 0,
+        "fault_resends": 0,
+        "time_s": 40.72
+      }
+    ],
+    "retries": 0,
+    "fault_resends": 4,
+    "goal_position_error_m": 0.249,
+    "min_clearance_m": 0.374,
+    "events": [
+      {
+        "fault": "B controller deactivate",
+        "faulted_node": "controller_server",
+        "failure_type": "deactivate",
+        "observed_state": "INACTIVE",
+        "detection_s": 0.75,
+        "safe_stop_s": 1.55,
+        "lifecycle_active_s": 4.5,
+        "normal_s": 6.55,
+        "mission_resume_s": 8.05,
+        "stopped_distance_m": 0.041,
+        "recovery_states": [
+          "DETECTED",
+          "RECOVERING",
+          "VERIFY",
+          "RECOVERED",
+          "IDLE"
+        ],
+        "recovery_attempts": 1
+      },
+      {
+        "fault": "C planner deactivate",
+        "faulted_node": "planner_server",
+        "failure_type": "deactivate",
+        "observed_state": "INACTIVE",
+        "detection_s": 0.43,
+        "safe_stop_s": 1.23,
+        "lifecycle_active_s": 4.63,
+        "normal_s": 6.68,
+        "mission_resume_s": 8.18,
+        "stopped_distance_m": 0.067,
+        "recovery_states": [
+          "DETECTED",
+          "RECOVERING",
+          "VERIFY",
+          "RECOVERED",
+          "IDLE"
+        ],
+        "recovery_attempts": 1
+      },
+      {
+        "fault": "D controller crash",
+        "faulted_node": "controller_server",
+        "failure_type": "crash",
+        "old_pid": 85299,
+        "observed_state": "MISSING",
+        "detection_s": 1.54,
+        "safe_stop_s": 2.34,
+        "new_pid": 86539,
+        "respawn_s": 3.44,
+        "lifecycle_active_s": 8.29,
+        "normal_s": 10.34,
+        "mission_resume_s": 11.72,
+        "stopped_distance_m": 0.124,
+        "recovery_states": [
+          "DETECTED",
+          "RECOVERING",
+          "VERIFY",
+          "RECOVERED",
+          "IDLE"
+        ],
+        "recovery_attempts": 1
+      },
+      {
+        "fault": "E recovery blocked",
+        "faulted_node": "controller_server",
+        "failure_type": "deactivate + blocked",
+        "recovery_attempts": 3,
+        "failed_after_s": 17.88,
+        "moved_while_failed_mm": 0.0,
+        "lifecycle_active_s": 3.23,
+        "normal_s": 5.28,
+        "mission_resume_s": 28.73,
+        "stopped_distance_m": 0.043,
+        "unblock_to_resume_s": 6.78
+      },
+      {
+        "fault": "G odom spike",
+        "faulted_node": "-",
+        "failure_type": "odom 2.5 m/s",
+        "odom_max_mps": 2.5,
+        "odom_validated_max_mps": 0.201,
+        "final_cmd_max_mps": 0.1
+      }
+    ]
+  }
+}

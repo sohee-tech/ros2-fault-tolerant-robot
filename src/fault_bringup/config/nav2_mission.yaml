@@ -7,3 +7,6 @@ nav2_mission_runner:
     max_retries: 2          # per waypoint, after an ABORTED / CANCELED goal
     retry_delay: 1.0        # s after the system is NORMAL again before re-sending
     nav2_wait_timeout: 60.0 # s to keep re-sending a REJECTED goal while Nav2 is still starting
+    fault_context_window: 3.0 # abort within this many s of an abnormal state = fault-caused
+    max_fault_resends: 5    # per waypoint, fault-caused re-sends (no retry used)
+    abort_grace: 1.0        # s to wait before deciding whether an abort was fault-caused

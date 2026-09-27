@@ -38,3 +38,5 @@ results/*
 !results/final_summary.json
 !results/nav2_summary.csv
 !results/nav2_summary.json
+!results/nav2_recovery_summary.csv
+!results/nav2_recovery_summary.json

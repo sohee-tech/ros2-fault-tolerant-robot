@@ -1,39 +1,39 @@
 section,metric,value
 mission,mission_success,True
-mission,mission_time_s,122.9
+mission,mission_time_s,124.0
 mission,waypoints_total,4
 mission,waypoints_reached,4
-waypoint,intersection,SUCCEEDED in 24.91 s (retries 0)
-waypoint,east_cross_aisle,SUCCEEDED in 36.51 s (retries 0)
-waypoint,ne_narrow_aisle,SUCCEEDED in 29.49 s (retries 0)
-waypoint,delivery_zone,SUCCEEDED in 31.67 s (retries 0)
+waypoint,intersection,SUCCEEDED in 24.9 s (retries 0)
+waypoint,east_cross_aisle,SUCCEEDED in 37.01 s (retries 0)
+waypoint,ne_narrow_aisle,SUCCEEDED in 29.94 s (retries 0)
+waypoint,delivery_zone,SUCCEEDED in 31.88 s (retries 0)
 mission,retries,0
 mission,fault_pauses,2
-mission,global_plans_published,143
+mission,global_plans_published,130
 mission,fault_recoveries,3
-mission,time_stopped_s,16.7
-mission,distance_travelled_m,19.0
+mission,time_stopped_s,17.8
+mission,distance_travelled_m,19.03
 mission,goal,"[0.0, 3.7]"
-mission,final_position,"[-0.077, 3.593]"
-mission,goal_position_error_m,0.132
+mission,final_position,"[-0.105, 3.627]"
+mission,goal_position_error_m,0.128
 mission,collision_count,0
-mission,min_clearance_m,0.398
-fault_lidar,to_critical_s,0.95
+mission,min_clearance_m,0.392
+fault_lidar,to_critical_s,0.98
 fault_lidar,stopped_window_moved_mm,0.0
 fault_lidar,nav2_cmd_max_during_stop_mps,0.0
-fault_lidar,recovery_to_normal_s,2.14
-fault_lidar,resume_after_normal_s,2.09
-fault_lidar,time_stopped_s,6.23
+fault_lidar,recovery_to_normal_s,2.05
+fault_lidar,resume_after_normal_s,2.18
+fault_lidar,time_stopped_s,7.13
 fault_odom,to_degraded_s,0.15
 fault_odom,nav2_raw_max_mps,0.2
 fault_odom,final_cmd_max_mps,0.1
 fault_odom,degraded_real_max_mps,0.1
-fault_odom,recovery_to_normal_s,2.03
-fault_latency,to_critical_s,0.46
+fault_odom,recovery_to_normal_s,2.0
+fault_latency,to_critical_s,0.48
 fault_latency,stopped_window_moved_mm,0.0
-fault_latency,nav2_cmd_max_during_stop_mps,0.189
-fault_latency,recovery_to_normal_s,2.04
-fault_latency,resume_after_normal_s,0.35
-fault_latency,time_stopped_s,5.24
+fault_latency,nav2_cmd_max_during_stop_mps,0.2
+fault_latency,recovery_to_normal_s,2.05
+fault_latency,resume_after_normal_s,0.37
+fault_latency,time_stopped_s,5.33
 demo,checks,25/25
 demo,passed,True

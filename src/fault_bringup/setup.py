@@ -39,6 +39,7 @@ setup(
             'integrated_demo = fault_bringup.integrated_demo:main',
             'nav2_mission_runner = fault_bringup.nav2_mission_runner:main',
             'nav2_demo = fault_bringup.nav2_demo:main',
+            'nav2_recovery_test = fault_bringup.nav2_recovery_test:main',
         ],
     },
 )

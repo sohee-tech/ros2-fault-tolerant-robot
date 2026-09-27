@@ -27,6 +27,7 @@ setup(
             'health_monitor = fault_monitor.health_monitor:main',
             'idle_stop = fault_monitor.idle_stop:main',
             'speed_limiter = fault_monitor.speed_limiter:main',
+            'nav2_recovery_manager = fault_monitor.nav2_recovery_manager:main',
         ],
     },
 )

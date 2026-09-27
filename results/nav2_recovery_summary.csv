@@ -1,0 +1,7 @@
+fault,faulted_node,failure_type,observed_state,detection_s,safe_stop_s,recovery_attempts,old_pid,new_pid,respawn_s,lifecycle_active_s,normal_s,mission_resume_s,stopped_distance_m,failed_after_s,moved_while_failed_mm,odom_max_mps,odom_validated_max_mps,final_cmd_max_mps
+B controller deactivate,controller_server,deactivate,INACTIVE,0.75,1.55,1,,,,4.5,6.55,8.05,0.041,,,,,
+C planner deactivate,planner_server,deactivate,INACTIVE,0.43,1.23,1,,,,4.63,6.68,8.18,0.067,,,,,
+D controller crash,controller_server,crash,MISSING,1.54,2.34,1,85299,86539,3.44,8.29,10.34,11.72,0.124,,,,,
+E recovery blocked,controller_server,deactivate + blocked,,,,3,,,,3.23,5.28,28.73,0.043,17.88,0.0,,,
+G odom spike,-,odom 2.5 m/s,,,,,,,,,,,,,,2.5,0.201,0.1
+mission_success=True,time=237.8s,waypoints=5/5,retries=0,fault_resends=4,checks=42/42,,,,,,,,,,,,,

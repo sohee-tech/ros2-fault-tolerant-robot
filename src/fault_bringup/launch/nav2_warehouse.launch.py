@@ -12,6 +12,9 @@ Arguments:
   dashboard:=true|false  fault dashboard
   mission:=true|false    start nav2_mission_runner (waypoint mission, waits for /mission/start)
   autostart_mission:=true|false  run the mission as soon as Nav2 is active
+  mission_config:=<file in config/>  waypoint list (default nav2_mission.yaml)
+Also started: nav2_recovery_manager (lifecycle watchdog + automatic recovery) and
+nav2_fault_injector (test services /nav2_fault/*).
 """
 import os
 
@@ -20,7 +23,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
@@ -32,12 +35,16 @@ def generate_launch_description():
     params = os.path.join(share, 'config', 'nav2_warehouse.yaml')
     map_yaml = os.path.join(share, 'maps', 'amr_warehouse.yaml')
     to_fault_path = [('cmd_vel', 'cmd_vel_nav_raw')]
+    # Nav2 velocity feedback only (not TF / AMCL): odometry samples that passed health_monitor's
+    # plausibility check. Pose/TF still come from odom -> base_footprint published by Gazebo.
+    validated_odom = [('odom', 'odom_validated')]
 
     return LaunchDescription([
         DeclareLaunchArgument('gui', default_value='true'),
         DeclareLaunchArgument('dashboard', default_value='true'),
         DeclareLaunchArgument('mission', default_value='true'),
         DeclareLaunchArgument('autostart_mission', default_value='false'),
+        DeclareLaunchArgument('mission_config', default_value='nav2_mission.yaml'),
 
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(os.path.join(share, 'launch', 'fault_sim.launch.py')),
@@ -54,24 +61,36 @@ def generate_launch_description():
              parameters=[{'use_sim_time': True, 'autostart': True, 'node_names': ['map_server', 'amcl']}]),
 
         # --- navigation ---
+        # respawn: Fault "Nav2 process crash" kills this process; it comes back unconfigured and
+        # nav2_recovery_manager brings the stack up again. Velocity feedback = validated odometry.
         Node(package='nav2_controller', executable='controller_server', output='screen',
-             parameters=[params], remappings=to_fault_path),
+             parameters=[params], remappings=to_fault_path + validated_odom,
+             respawn=True, respawn_delay=2.0),
         Node(package='nav2_planner', executable='planner_server', name='planner_server', output='screen',
              parameters=[params]),
         Node(package='nav2_behaviors', executable='behavior_server', name='behavior_server', output='screen',
              parameters=[params], remappings=to_fault_path),
         Node(package='nav2_bt_navigator', executable='bt_navigator', name='bt_navigator', output='screen',
-             parameters=[params]),
+             parameters=[params], remappings=validated_odom),
         Node(package='nav2_waypoint_follower', executable='waypoint_follower', name='waypoint_follower',
              output='screen', parameters=[params]),
         Node(package='nav2_lifecycle_manager', executable='lifecycle_manager',
              name='lifecycle_manager_navigation', output='screen',
-             parameters=[{'use_sim_time': True, 'autostart': True, 'node_names': NAV_NODES}]),
+             # On a broken bond (node deactivated / crashed) the manager still resets the whole
+             # navigation stack, but does not restart it on its own: nav2_recovery_manager decides
+             # (attempt limit, recovery-block test) and calls manage_nodes STARTUP.
+             parameters=[{'use_sim_time': True, 'autostart': True, 'node_names': NAV_NODES,
+                          'attempt_respawn_reconnection': False}]),
+
+        # --- Nav2 lifecycle watchdog / recovery + lifecycle fault injection (tests) ---
+        Node(package='fault_monitor', executable='nav2_recovery_manager', output='screen',
+             parameters=[os.path.join(share, 'config', 'nav2_recovery.yaml')]),
+        Node(package='fault_injector', executable='nav2_fault_injector', output='screen'),
 
         # --- waypoint mission ---
         Node(package='fault_bringup', executable='nav2_mission_runner', output='screen',
              condition=IfCondition(LaunchConfiguration('mission')),
-             parameters=[os.path.join(share, 'config', 'nav2_mission.yaml'),
+             parameters=[PathJoinSubstitution([share, 'config', LaunchConfiguration('mission_config')]),
                          {'layout_file': os.path.join(share, 'config', 'amr_warehouse_layout.yaml'),
                           'autostart': ParameterValue(LaunchConfiguration('autostart_mission'),
                                                       value_type=bool)}]),

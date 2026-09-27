@@ -1,4 +1,4 @@
-"""System health monitor (LiDAR + odometry + control latency + navigation liveness).
+"""System health monitor (LiDAR + odometry + control latency + navigation liveness + Nav2 stack).
 
 LiDAR (Fault 1): age of the last /scan message (receive time, node clock = sim time)
   drives NORMAL -> WARNING -> DEGRADED -> CRITICAL.
@@ -24,7 +24,12 @@ Navigation liveness (Fault 4): age of the last /nav/heartbeat (UInt64 = PID of
   nav_command_source) drives NORMAL -> WARNING -> DEGRADED -> CRITICAL, same rules as
   LiDAR (`nav_hold_ticks`, `nav_recovery_time`). A PID change counts as a restart.
 
-System state = worst of LiDAR, odometry, control latency and navigation liveness state.
+Nav2 stack (lifecycle): /nav2/stack_ok (Bool, 5 Hz from nav2_recovery_manager; true = all Nav2
+  servers ACTIVE). Time the stack has been abnormal (or silent > nav2_stale_timeout) drives
+  WARNING/DEGRADED/CRITICAL (nav2_warning/degraded/critical_time); healthy for nav2_recovery_time
+  -> NORMAL. Only evaluated after the stack was seen healthy once (no Nav2 -> stays NORMAL).
+
+System state = worst of LiDAR, odometry, control latency, navigation liveness and Nav2 stack.
   - >= DEGRADED: /health/speed_limit = degraded_speed_limit (speed_limiter clamps nav)
   - CRITICAL:    zero Twist on /cmd_vel_safety every tick (twist_mux priority -> stop)
 """
@@ -74,6 +79,11 @@ class HealthMonitor(Node):
                                p('nav_critical_age', 1.2)]
         self.nav_hold_ticks = p('nav_hold_ticks', 2)
         self.nav_recovery_time = p('nav_recovery_time', 2.0)
+        # Nav2 stack (lifecycle)
+        self.nav2_thresholds = [0.0, p('nav2_warning_time', 0.2), p('nav2_degraded_time', 0.5),
+                                p('nav2_critical_time', 1.0)]
+        self.nav2_recovery_time = p('nav2_recovery_time', 2.0)
+        self.nav2_stale_timeout = p('nav2_stale_timeout', 1.0)
         # Response
         self.degraded_speed_limit = p('degraded_speed_limit', 0.10)
         rate = p('rate', 20.0)
@@ -110,6 +120,13 @@ class HealthMonitor(Node):
         self.nav_pid = 0
         self.nav_restart_count = 0
         self.nav_age = NAN
+        # Nav2 stack state
+        self.nav2_state = NORMAL
+        self.nav2_seen_ok = False
+        self.nav2_last_msg = None
+        self.nav2_ok = True
+        self.nav2_bad_since = None
+        self.nav2_ok_since = None
         # System
         self.state = NORMAL
         self.speed_limit = 0.0
@@ -127,6 +144,7 @@ class HealthMonitor(Node):
         self.create_subscription(Twist, 'cmd_vel_nav_raw', self.on_nav_raw, 10)
         self.create_subscription(Float64, 'control/latency_sec', self.on_latency, 10)
         self.create_subscription(UInt64, 'nav/heartbeat', self.on_heartbeat, 10)
+        self.create_subscription(Bool, 'nav2/stack_ok', self.on_nav2_ok, 10)
         self.create_subscription(String, 'control/delay_mode',
                                  lambda m: setattr(self, 'delay_mode', m.data), latched)
         self.create_subscription(Float64, 'control/injected_delay_sec',
@@ -141,6 +159,7 @@ class HealthMonitor(Node):
         self.pub_odom_state = self.create_publisher(String, 'health/odom_state', latched)
         self.pub_control_state = self.create_publisher(String, 'health/control_state', latched)
         self.pub_nav_state = self.create_publisher(String, 'health/nav_state', latched)
+        self.pub_nav2_state = self.create_publisher(String, 'health/nav2_state', latched)
         self.pub_nav_restarts = self.create_publisher(UInt64, 'health/nav_restart_count', latched)
         self.pub_limit = self.create_publisher(Float64, 'health/speed_limit', latched)
         self.pub_age = self.create_publisher(Float64, 'health/scan_age', 10)
@@ -154,12 +173,13 @@ class HealthMonitor(Node):
         self.csv = csv.writer(self.csv_file)
         self.csv.writerow([
             'timestamp', 'sim_time', 'system_state', 'lidar_state', 'odom_state', 'control_state',
-            'nav_state',
+            'nav_state', 'nav2_state',
             'scan_age', 'lidar_fault_enabled', 'odom_fault_enabled',
             'odom_raw_vx', 'odom_output_vx', 'odom_valid', 'odom_error', 'odom_invalid_total',
             'degraded_speed_limit', 'safety_stop_active', 'cmd_vel_nav_x', 'cmd_vel_out_x',
             'control_latency_sec', 'delay_mode', 'injected_delay_sec', 'cmd_vel_nav_raw_x',
-            'nav_heartbeat_age', 'nav_alive', 'nav_restart_count', 'nav_process_pid'])
+            'nav_heartbeat_age', 'nav_alive', 'nav_restart_count', 'nav_process_pid',
+            'nav2_stack_ok', 'nav2_abnormal_s'])
 
         self.create_timer(1.0 / rate, self.tick)
         self.pub_state.publish(String(data=NAMES[self.state]))
@@ -167,6 +187,7 @@ class HealthMonitor(Node):
         self.pub_odom_state.publish(String(data=NAMES[self.odom_state]))
         self.pub_control_state.publish(String(data=NAMES[self.control_state]))
         self.pub_nav_state.publish(String(data=NAMES[self.nav_state]))
+        self.pub_nav2_state.publish(String(data=NAMES[self.nav2_state]))
         self.pub_nav_restarts.publish(UInt64(data=0))
         self.pub_limit.publish(Float64(data=self.speed_limit))
         self.get_logger().info(f'Health monitor started, CSV: {self.csv_path}')
@@ -357,6 +378,50 @@ class HealthMonitor(Node):
             self.get_logger().warn(f'[NAV {NAMES[new]}] heartbeat age {age:.2f} s')
         self.update_system()
 
+    # --- Nav2 stack state machine -----------------------------------------
+    def on_nav2_ok(self, msg):
+        self.nav2_last_msg = self.now()
+        self.nav2_ok = msg.data
+        self.nav2_seen_ok |= msg.data
+
+    def update_nav2(self, now):
+        if not self.nav2_seen_ok:
+            return
+        ok = self.nav2_ok and now - self.nav2_last_msg < self.nav2_stale_timeout
+        if not ok:
+            self.nav2_ok_since = None
+            self.nav2_bad_since = self.nav2_bad_since or now
+            bad_for = now - self.nav2_bad_since
+            for lvl in (CRITICAL, DEGRADED, WARNING):
+                if bad_for >= self.nav2_thresholds[lvl]:
+                    break
+            else:
+                return
+            if lvl > self.nav2_state:
+                self.set_nav2_state(lvl, f'Nav2 stack not ACTIVE for {bad_for:.2f} s')
+            return
+        self.nav2_bad_since = None
+        if self.nav2_state == NORMAL:
+            return
+        if self.nav2_ok_since is None:
+            self.nav2_ok_since = now
+            self.get_logger().info(f'[NAV2 {NAMES[self.nav2_state]}] stack ACTIVE again, recovering '
+                                   f'(need {self.nav2_recovery_time:.1f} s healthy)')
+        elif now - self.nav2_ok_since >= self.nav2_recovery_time:
+            self.set_nav2_state(NORMAL, f'Nav2 stack healthy for {self.nav2_recovery_time:.1f} s')
+
+    def set_nav2_state(self, new, reason):
+        self.nav2_state = new
+        self.nav2_ok_since = None
+        self.pub_nav2_state.publish(String(data=NAMES[new]))
+        if new == NORMAL:
+            self.get_logger().info(f'[NAV2 NORMAL] {reason}')
+        elif new == CRITICAL:
+            self.get_logger().error(f'[NAV2 CRITICAL] {reason} -> SAFE STOP')
+        else:
+            self.get_logger().warn(f'[NAV2 {NAMES[new]}] {reason}')
+        self.update_system()
+
     # --- LiDAR state machine ---------------------------------------------
     def lidar_level(self, age):
         if age > self.critical_age:
@@ -406,12 +471,13 @@ class HealthMonitor(Node):
 
     # --- system ------------------------------------------------------------
     def update_system(self):
-        new = max(self.lidar_state, self.odom_state, self.control_state, self.nav_state)
+        new = max(self.lidar_state, self.odom_state, self.control_state, self.nav_state, self.nav2_state)
         if new != self.state:
             self.get_logger().info(
                 f'system state {NAMES[self.state]} -> {NAMES[new]} '
                 f'(lidar {NAMES[self.lidar_state]}, odom {NAMES[self.odom_state]}, '
-                f'control {NAMES[self.control_state]}, nav {NAMES[self.nav_state]})')
+                f'control {NAMES[self.control_state]}, nav {NAMES[self.nav_state]}, '
+                f'nav2 {NAMES[self.nav2_state]})')
             self.state = new
             self.pub_state.publish(String(data=NAMES[new]))  # latched; on change only
         limit = self.degraded_speed_limit if self.state >= DEGRADED else 0.0
@@ -428,6 +494,7 @@ class HealthMonitor(Node):
         if self.last_hb is not None:
             self.nav_age = now - self.last_hb
             self.update_nav(now, self.nav_age)
+        self.update_nav2(now)
 
         safe_stop = self.state == CRITICAL
         if safe_stop:
@@ -437,14 +504,16 @@ class HealthMonitor(Node):
         self.csv.writerow([
             f'{time.time():.3f}', f'{now:.3f}', NAMES[self.state],
             NAMES[self.lidar_state], NAMES[self.odom_state], NAMES[self.control_state],
-            NAMES[self.nav_state],
+            NAMES[self.nav_state], NAMES[self.nav2_state],
             f'{age:.3f}', int(self.lidar_fault), int(self.odom_fault),
             f'{self.odom_raw_vx:.4f}', f'{self.odom_vx:.4f}', int(not self.tick_invalid),
             '|'.join(sorted(self.tick_errors)) or 'none', self.odom_invalid_total,
             f'{self.speed_limit:.2f}', int(safe_stop), f'{self.nav_vx:.3f}', f'{self.out_vx:.3f}',
             f'{self.latency:.3f}', self.delay_mode, f'{self.injected_delay:.2f}', f'{self.nav_raw_vx:.3f}',
             f'{self.nav_age:.3f}', int(self.nav_age < self.nav_thresholds[WARNING]),
-            self.nav_restart_count, self.nav_pid])
+            self.nav_restart_count, self.nav_pid,
+            int(self.nav2_ok) if self.nav2_seen_ok else '',
+            f'{now - self.nav2_bad_since:.2f}' if self.nav2_bad_since else '0.00'])
         self.csv_file.flush()
         self.tick_invalid = False
         self.tick_errors.clear()

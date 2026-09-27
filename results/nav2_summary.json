@@ -1,5 +1,5 @@
 {
-  "generated": "2026-09-27T17:29:50",
+  "generated": "2026-09-27T18:15:10",
   "world": "amr_warehouse",
   "demo_passed": true,
   "checks_passed": 25,
@@ -8,7 +8,7 @@
   "time_base": "sim time; positions/speeds from Gazebo /odom_raw (ground truth)",
   "results": {
     "mission_success": true,
-    "mission_time_s": 122.9,
+    "mission_time_s": 124.0,
     "waypoints_total": 4,
     "waypoints_reached": 4,
     "waypoint_results": [
@@ -16,67 +16,71 @@
         "name": "intersection",
         "result": "SUCCEEDED",
         "retries": 0,
-        "time_s": 24.91
+        "fault_resends": 0,
+        "time_s": 24.9
       },
       {
         "name": "east_cross_aisle",
         "result": "SUCCEEDED",
         "retries": 0,
-        "time_s": 36.51
+        "fault_resends": 0,
+        "time_s": 37.01
       },
       {
         "name": "ne_narrow_aisle",
         "result": "SUCCEEDED",
         "retries": 0,
-        "time_s": 29.49
+        "fault_resends": 0,
+        "time_s": 29.94
       },
       {
         "name": "delivery_zone",
         "result": "SUCCEEDED",
         "retries": 0,
-        "time_s": 31.67
+        "fault_resends": 0,
+        "time_s": 31.88
       }
     ],
     "retries": 0,
     "fault_pauses": 2,
-    "global_plans_published": 143,
+    "global_plans_published": 130,
     "fault_recoveries": 3,
-    "time_stopped_s": 16.7,
-    "distance_travelled_m": 19.0,
+    "time_stopped_s": 17.8,
+    "distance_travelled_m": 19.03,
     "goal": [
       0.0,
       3.7
     ],
     "final_position": [
-      -0.077,
-      3.593
+      -0.105,
+      3.627
     ],
-    "goal_position_error_m": 0.132,
+    "goal_position_error_m": 0.128,
     "collision_count": 0,
-    "min_clearance_m": 0.398,
+    "min_clearance_m": 0.392,
     "faults": {
       "lidar": {
-        "to_critical_s": 0.95,
+        "to_critical_s": 0.98,
         "stopped_window_moved_mm": 0.0,
         "nav2_cmd_max_during_stop_mps": 0.0,
-        "recovery_to_normal_s": 2.14,
-        "resume_after_normal_s": 2.09,
-        "time_stopped_s": 6.23
+        "recovery_to_normal_s": 2.05,
+        "resume_after_normal_s": 2.18,
+        "time_stopped_s": 7.13
       },
       "odom": {
         "to_degraded_s": 0.15,
         "nav2_raw_max_mps": 0.2,
         "final_cmd_max_mps": 0.1,
         "degraded_real_max_mps": 0.1,
-        "recovery_to_normal_s": 2.03
+        "recovery_to_normal_s": 2.0
       },
       "latency": {
-        "to_critical_s": 0.46,
+        "to_critical_s": 0.48,
         "stopped_window_moved_mm": 0.0,
-        "nav2_cmd_max_during_stop_mps": 0.189,
-        "recovery_to_normal_s": 2.04,
-        "resume_after_normal_s": 0.35,
-        "time_stopped_s": 5.24
+        "nav2_cmd_max_during_stop_mps": 0.2,
+        "recovery_to_normal_s": 2.05,
+        "resume_after_normal_s": 0.37,
+        "time_stopped_s": 5.33
       }
     }
   }

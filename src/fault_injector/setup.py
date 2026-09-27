@@ -25,6 +25,7 @@ setup(
     entry_points={
         'console_scripts': [
             'lidar_fault_injector = fault_injector.lidar_fault_injector:main',
+            'nav2_fault_injector = fault_injector.nav2_fault_injector:main',
             'odom_fault_injector = fault_injector.odom_fault_injector:main',
             'control_delay_injector = fault_injector.control_delay_injector:main',
             'nav_fault_injector = fault_injector.nav_fault_injector:main',

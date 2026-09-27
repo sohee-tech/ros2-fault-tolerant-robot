@@ -8,6 +8,12 @@ Sends NavigateToPose goals for the configured waypoints one after another.
   mission FAILS.
 - A REJECTED goal means Nav2 is not active yet (e.g. right after launch): it is re-sent every
   2 s for up to `nav2_wait_timeout` s without using a retry.
+- An ABORTED / CANCELED goal caused by a fault (system not NORMAL, Nav2 recovery in progress, or
+  an abnormal state within the last `fault_context_window` s - e.g. the Nav2 stack was reset under
+  it) does not use a retry either: state RECOVERING, re-sent once the system is NORMAL again
+  (at most `max_fault_resends` times per waypoint). Only aborts in a healthy system use retries.
+  The decision is taken `abort_grace` s after the abort: a Nav2 server that is deactivated aborts
+  its goal immediately, before the watchdog has noticed the failure.
 
 Topics:  /mission/status  std_msgs/String (JSON, transient local)  mode, state, index, total, name,
                           goal, distance_remaining, retries, reached, results
@@ -54,6 +60,10 @@ class MissionRunner(Node):
         self.max_retries = p('max_retries', 2)
         self.retry_delay = p('retry_delay', 1.0)
         self.nav2_wait_timeout = p('nav2_wait_timeout', 60.0)
+        self.fault_context_window = p('fault_context_window', 3.0)
+        self.max_fault_resends = p('max_fault_resends', 5)
+        self.abort_grace = p('abort_grace', 1.0)
+        self.pending_abort = None       # (result, time) waiting for the fault-context decision
         autostart = p('autostart', False)
         self.waypoints = load_waypoints(layout_file, names)
 
@@ -63,10 +73,15 @@ class MissionRunner(Node):
         self.pub_event = self.create_publisher(String, 'mission/event', 10)
         self.pub_complete = self.create_publisher(Bool, 'mission/complete', latched)
         self.create_subscription(String, 'health/state', self.on_health, latched)
+        self.create_subscription(String, 'nav2_recovery/state', self.on_recovery, latched)
         self.create_service(Trigger, 'mission/start', self.on_start)
 
         self.system_state = 'NORMAL'
-        self.state = 'IDLE'            # IDLE RUNNING PAUSED RETRY_WAIT WAIT_NAV2 COMPLETE FAILED
+        self.recovery_state = 'IDLE'
+        self.t_abnormal = -1e9          # last time the system / Nav2 stack was not healthy
+        self.fault_resends = 0          # current waypoint
+        self.total_fault_resends = 0
+        self.state = 'IDLE'  # IDLE RUNNING PAUSED CHECK_ABORT RETRY_WAIT RECOVERING WAIT_NAV2 COMPLETE FAILED
         self.index = 0
         self.retries = 0
         self.total_retries = 0
@@ -101,21 +116,33 @@ class MissionRunner(Node):
             'goal': [w['x'], w['y'], w.get('yaw', 0.0)],
             'distance_remaining': self.distance, 'retries': self.retries,
             'total_retries': self.total_retries, 'pauses': self.pauses,
+            'fault_resends': self.total_fault_resends, 'nav2_recovery': self.recovery_state,
             'reached': sum(r['result'] == 'SUCCEEDED' for r in self.results),
             'mission_time': round(self.now() - self.t_mission, 2) if self.t_mission else None,
             'results': self.results})))
 
     # --- callbacks ---
     def on_start(self, _req, res):
-        if self.state in ('RUNNING', 'PAUSED', 'RETRY_WAIT', 'WAIT_NAV2'):
+        if self.state in ('RUNNING', 'PAUSED', 'RETRY_WAIT', 'RECOVERING', 'WAIT_NAV2', 'CHECK_ABORT'):
             res.success, res.message = False, 'mission already running'
         else:
             self.start_requested = True
             res.success, res.message = True, f'mission start requested ({len(self.waypoints)} waypoints)'
         return res
 
+    def on_recovery(self, msg):
+        self.recovery_state = msg.data
+        if msg.data not in ('IDLE', 'RECOVERED'):
+            self.t_abnormal = self.now()
+
+    def fault_context(self):
+        return (self.system_state != 'NORMAL' or self.recovery_state not in ('IDLE',)
+                or self.now() - self.t_abnormal < self.fault_context_window)
+
     def on_health(self, msg):
         prev, self.system_state = self.system_state, msg.data
+        if msg.data != 'NORMAL' or prev != 'NORMAL':
+            self.t_abnormal = self.now()
         if self.state == 'RUNNING' and msg.data == 'CRITICAL':
             self.state = 'PAUSED'
             self.pauses += 1
@@ -134,19 +161,25 @@ class MissionRunner(Node):
                 return
             self.start_requested = False
             self.index, self.results, self.total_retries, self.pauses = 0, [], 0, 0
+            self.total_fault_resends = self.fault_resends = 0
             self.t_mission = self.now()
             self.pub_complete.publish(Bool(data=False))
             self.event(f'mission START: {len(self.waypoints)} waypoints')
             self.send_goal()
-        elif self.state == 'RETRY_WAIT' and self.system_state == 'NORMAL':
+        elif self.state in ('RETRY_WAIT', 'RECOVERING') and self.system_state == 'NORMAL':
             if self.t_retry == 0.0:
                 self.t_retry = self.now() + self.retry_delay
             elif self.now() >= self.t_retry:
                 self.t_retry = 0.0
-                self.event(f'retry {self.retries}/{self.max_retries}: re-sending waypoint {self.index + 1}')
+                self.event(f're-sending waypoint {self.index + 1} after fault recovery' if self.state == 'RECOVERING'
+                           else f'retry {self.retries}/{self.max_retries}: re-sending waypoint {self.index + 1}')
                 self.send_goal()
         elif self.state == 'WAIT_NAV2' and self.now() >= self.t_retry:
             self.send_goal()
+        elif self.state == 'CHECK_ABORT' and self.now() - self.pending_abort[1] >= self.abort_grace:
+            result, _ = self.pending_abort
+            self.pending_abort = None
+            self.handle_result(result)
         self.publish_status()
 
     def send_goal(self):
@@ -181,7 +214,6 @@ class MissionRunner(Node):
 
     def finish_goal(self, result):
         self.goal_handle = None
-        w = self.waypoints[self.index]
         if result == 'REJECTED':
             now = self.now()
             self.t_rejected = self.t_rejected or now
@@ -193,11 +225,33 @@ class MissionRunner(Node):
                 self.publish_status()
                 return
         self.t_rejected = None
+        if result in ('ABORTED', 'CANCELED'):
+            self.pending_abort = (result, self.now())
+            self.state = 'CHECK_ABORT'
+            self.publish_status()
+            return
+        self.handle_result(result)
+
+    def handle_result(self, result):
+        """Final handling of a goal result (ABORTED / CANCELED arrive here after abort_grace)."""
+        w = self.waypoints[self.index]
+        if result in ('ABORTED', 'CANCELED') and self.fault_context() \
+                and self.fault_resends < self.max_fault_resends:
+            self.fault_resends += 1
+            self.total_fault_resends += 1
+            self.state = 'RECOVERING'
+            self.t_retry = 0.0
+            self.event(f'waypoint {self.index + 1} {w["name"]} {result} by a fault (system {self.system_state}, '
+                       f'Nav2 recovery {self.recovery_state}); re-send when NORMAL (no retry used)')
+            self.publish_status()
+            return
         if result == 'SUCCEEDED':
             self.results.append({'name': w['name'], 'result': result, 'retries': self.retries,
+                                 'fault_resends': self.fault_resends,
                                  'time_s': round(self.now() - self.t_goal, 2)})
             self.event(f'waypoint {self.index + 1} {w["name"]} REACHED')
             self.retries = 0
+            self.fault_resends = 0
             self.index += 1
             if self.index >= len(self.waypoints):
                 self.state = 'COMPLETE'

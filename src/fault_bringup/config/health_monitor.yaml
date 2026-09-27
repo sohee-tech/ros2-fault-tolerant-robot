@@ -36,3 +36,10 @@ health_monitor:
     nav_critical_age: 1.2
     nav_hold_ticks: 2           # consecutive ticks before escalating
     nav_recovery_time: 2.0      # healthy heartbeat needed before NORMAL
+
+    # Nav2 stack lifecycle health (/nav2/stack_ok from nav2_recovery_manager) [s]
+    nav2_warning_time: 0.2      # stack not ACTIVE for >= this -> WARNING
+    nav2_degraded_time: 0.5
+    nav2_critical_time: 1.0     # -> CRITICAL (safe stop via /cmd_vel_safety)
+    nav2_recovery_time: 2.0     # healthy stack needed before NORMAL
+    nav2_stale_timeout: 1.0     # no /nav2/stack_ok for this long counts as unhealthy

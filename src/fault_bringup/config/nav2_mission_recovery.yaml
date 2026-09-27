@@ -1,0 +1,11 @@
+# Longer mission for the Nav2 recovery test (one Nav2 fault per leg):
+# Start -> intersection -> east cross aisle -> NE narrow aisle -> west cross aisle -> delivery zone
+nav2_mission_runner:
+  ros__parameters:
+    waypoints: [intersection, east_cross_aisle, ne_narrow_aisle, west_cross_aisle, delivery_zone]
+    max_retries: 2
+    retry_delay: 1.0
+    nav2_wait_timeout: 60.0
+    fault_context_window: 3.0
+    max_fault_resends: 5
+    abort_grace: 1.0        # s to wait before deciding whether an abort was fault-caused

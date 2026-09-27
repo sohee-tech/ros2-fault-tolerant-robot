@@ -34,7 +34,8 @@ STALE = 0.5   # s without a message -> value shown as "--"
 SUBSYSTEMS = [('lidar', 'LiDAR', 'health/lidar_state'),
               ('odom', 'Odometry', 'health/odom_state'),
               ('control', 'Control Latency', 'health/control_state'),
-              ('nav', 'Navigation', 'health/nav_state')]
+              ('nav', 'Navigation', 'health/nav_state'),
+              ('nav2', 'Nav2 Stack', 'health/nav2_state')]
 
 BUTTONS = [
     ('LiDAR (Fault 1)', 'lidar', [('Enable dropout', 'lidar_fault/enable'),
@@ -48,6 +49,11 @@ BUTTONS = [
     ('Navigation (Fault 4)', 'nav', [('Crash process', 'nav_fault/crash'),
                                      ('Crash loop ON', 'nav_fault/crash_loop_enable'),
                                      ('Crash loop OFF', 'nav_fault/crash_loop_disable')]),
+    ('Nav2 lifecycle', 'nav2', [('Controller deact.', 'nav2_fault/controller_deactivate'),
+                                ('Planner deact.', 'nav2_fault/planner_deactivate'),
+                                ('Controller crash', 'nav2_fault/controller_crash'),
+                                ('Block recovery', 'nav2_fault/recovery_block_enable'),
+                                ('Unblock', 'nav2_fault/recovery_block_disable')]),
 ]
 
 
@@ -63,7 +69,8 @@ class DashboardNode(Node):
                   'scan_age': None, 'odom_vx': None, 'odom_raw_vx': None, 'odom_valid': None,
                   'latency': None, 'restarts': 0, 'pid': None, 'limit': 0.0,
                   'lidar_fault': False, 'odom_fault': False, 'delay_mode': 'NONE', 'crash_loop': False,
-                  'phase': '', 'mission': None, 'drive_requested': False}
+                  'phase': '', 'mission': None, 'drive_requested': False, 'nav2_block': False,
+                  'nav2': None, 'nav2_stack': None}   # nav2 = health state, nav2_stack = recovery manager JSON
         self.t = {}   # topic -> monotonic time of last message
         self.last = {'nav_x': None, 'out_x': None}
         self.odom_invalid = 0
@@ -91,6 +98,10 @@ class DashboardNode(Node):
         self.create_subscription(String, 'demo/phase', self.on_phase, latched)
         self.create_subscription(String, 'demo/event', lambda m: self.event(m.data), 10)
         self.create_subscription(String, 'mission/status', self.on_mission, latched)
+        self.create_subscription(String, 'nav2_recovery/node_states', self.on_nav2_nodes, 10)
+        self.create_subscription(Bool, 'nav2_fault/recovery_block',
+                                 lambda m: self.flag('nav2_block', m.data, 'Nav2 recovery block'), latched)
+        self.create_subscription(String, 'nav2_recovery/event', lambda m: self.event(f'[nav2] {m.data}'), 10)
         self.create_subscription(String, 'mission/event', lambda m: self.event(f'[mission] {m.data}'), 10)
         self.create_subscription(Bool, 'nav_source/active_request',
                                  lambda m: self.v.__setitem__('drive_requested', m.data), latched)
@@ -147,6 +158,12 @@ class DashboardNode(Node):
             self.v['phase'] = msg.data
             if msg.data:
                 self.event(f'=== {msg.data} ===')
+
+    def on_nav2_nodes(self, msg):
+        try:
+            self.put('nav2_stack', json.loads(msg.data))
+        except ValueError:
+            pass
 
     def on_mission(self, msg):
         try:
@@ -243,7 +260,7 @@ class Dashboard:
             box.grid(row=0, column=i, sticky='nsew', padx=4)
             controls.columnconfigure(i, weight=1)
             for text, srv in buttons:
-                tk.Button(box, text=text, font=small, width=14,
+                tk.Button(box, text=text, font=small, width=13,
                           command=lambda s=srv: self.node.call(s)).pack(pady=2)
             lbl = tk.Label(box, text='', font=small, bg=bg, fg=fg)
             lbl.pack()
@@ -258,9 +275,24 @@ class Dashboard:
         self.log.pack(fill='both', expand=True, padx=10, pady=(0, 10))
         self.shown_seq = 0
         self.snapshot_requested = False
-        self.root.geometry('1100x1040+1420+40')   # right side of the screen
+        self.root.geometry('1240x1080+1300+40')   # right side of the screen
         self.root.attributes('-topmost', True)   # stay visible above the Gazebo window
         self.root.after(100, self.refresh)
+
+    @staticmethod
+    def nav2_detail(d):
+        if not d:
+            return 'no Nav2 stack\n'
+        short = {'controller_server': 'ctrl', 'planner_server': 'plan', 'bt_navigator': 'bt',
+                 'behavior_server': 'beh'}
+        nodes = d['nodes']
+        line1 = ' '.join(f'{short.get(k, k)}:{v["state"][:5]}' for k, v in nodes.items())
+        ctrl = nodes.get('controller_server', {})
+        hist = [h for h in d.get('pid_history', []) if h[0] == 'controller_server']
+        pid = f'pid {hist[-1][1]}->{hist[-1][2]}' if hist else f'pid {ctrl.get("pid") or "--"}'
+        line2 = (f'{d["state"]}  att {d["attempts"]}  rst {ctrl.get("restarts", 0)}  {pid}'
+                 + (f'  failed {short.get(d["failed_node"], d["failed_node"])}' if d['failed_node'] else ''))
+        return f'{line1}\n{line2}'
 
     @staticmethod
     def fmt(v, spec='.2f', unit=''):
@@ -321,6 +353,7 @@ class Dashboard:
                        f'delay     {v["delay_mode"]}',
             'nav': f'hb age    {self.fmt(hb_age, ".2f", " s")}\n'
                    f'restarts  {v["restarts"]}   pid {v["pid"] or "--"}',
+            'nav2': self.nav2_detail(n.fresh('nav2_stack')),
         }
         for key, (f, name, st, detail) in self.tiles.items():
             s = v[key]
@@ -364,6 +397,7 @@ class Dashboard:
         self.fault_labels['odom'].configure(text='fault: ' + ('ON' if v['odom_fault'] else 'off'))
         self.fault_labels['control'].configure(text='delay: ' + v['delay_mode'])
         self.fault_labels['nav'].configure(text='crash loop: ' + ('ON' if v['crash_loop'] else 'off'))
+        self.fault_labels['nav2'].configure(text='recovery block: ' + ('ON' if v['nav2_block'] else 'off'))
 
         with n.lock:
             new = [text for seq, text in n.events if seq > self.shown_seq]
