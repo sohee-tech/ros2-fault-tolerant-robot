@@ -233,7 +233,7 @@ The safety command path is independent from the normal motion command path. In C
 
 ## Project Goals
 
-The project is designed as an implementation-focused capstone rather than a paper-oriented study. The main deliverables are:
+The project is designed as an implementation-focused capstone rather than a paper-oriented study. The current core is complete, and the project is being expanded toward autonomous navigation, compound-fault handling, recovery, visualization, and quantitative verification. The main deliverables are:
 
 - reproducible fault injection
 - runtime fault detection
@@ -242,6 +242,99 @@ The project is designed as an implementation-focused capstone rather than a pape
 - quantitative evaluation such as detection latency, recovery success rate, false positives, and stopping behavior
 
 Concepts such as fault detection, degraded operation, and minimal-risk behavior are used as design references. This project does **not** claim ISO 26262 or SOTIF compliance.
+
+## Expansion Roadmap
+
+The current implementation establishes the fault-diagnosis and staged-response core. The project is now being expanded from a fault-monitoring prototype into a fault-tolerant autonomous mobile robot system.
+
+### 1. Simulation Environment Enhancement
+
+The basic TurtleBot3 world will be replaced with a more realistic indoor AMR / warehouse-style environment so that the final demonstration represents an actual mobile-robot mission rather than simple straight-line motion.
+
+Planned elements include:
+
+- structured indoor map
+- shelves / walls / obstacles
+- start, waypoint, and goal positions
+- visualization suitable for presentation and portfolio use
+
+### 2. Fault State Visualization
+
+A dedicated monitoring dashboard will visualize:
+
+- overall system state: NORMAL / WARNING / DEGRADED / CRITICAL
+- LiDAR, odometry, control-latency, and navigation health
+- scan age, odometry validity, measured latency, heartbeat age
+- speed limit, final velocity command, safety-stop state
+- recent state transitions and fault events
+
+### 3. Real Navigation Integration
+
+The current constant-velocity navigation source will be replaced by ROS2 Nav2-based autonomous navigation.
+
+Target flow:
+
+```text
+Goal / Waypoints
+      |
+      v
+     Nav2
+      |
+      v
+Path Planning / Controller
+      |
+      v
+Fault-Tolerant Control Layer
+      |
+      v
+    Robot
+```
+
+The final demonstration will verify fault responses while the robot is actively navigating toward goals and avoiding obstacles.
+
+### 4. Recovery Enhancement
+
+The existing process-crash / respawn recovery will be extended toward Nav2 lifecycle-aware recovery.
+
+Planned targets include:
+
+- Nav2 node health monitoring
+- lifecycle-state inspection
+- restart / reactivate behavior
+- mission continuation after healthy recovery
+
+### 5. Multi-Fault Response
+
+The project will verify simultaneous and sequential faults rather than testing only one fault at a time.
+
+Example scenarios:
+
+- LiDAR dropout + odometry anomaly
+- odometry anomaly + control latency
+- navigation-process failure during another active fault
+- recovery of one fault while another remains active
+
+The system will validate severity arbitration and response priorities under compound faults.
+
+### 6. Scenario Manager and Quantitative Evaluation
+
+Fault sequences will be automated through reusable scenarios so experiments can be reproduced consistently.
+
+Planned quantitative outputs include:
+
+- detection latency
+- transition time to DEGRADED / CRITICAL
+- stopping latency and stopping distance
+- recovery time
+- restart success
+- false-positive behavior
+- commanded vs. actual speed during degraded operation
+
+Selected final results will be stored in a compact `results/` summary for GitHub, while raw logs remain excluded.
+
+### 7. Real-Robot Deployment (Optional)
+
+If time permits, the final simulation system will be ported to a physical mobile robot such as TurtleBot3 to evaluate sensor disconnection and communication-delay cases outside simulation.
 
 ## Development Log
 
@@ -252,4 +345,10 @@ Concepts such as fault detection, degraded operation, and minimal-risk behavior 
 - **Milestone 5:** Odometry anomaly detection — complete
 - **Milestone 6:** Control latency detection — complete
 - **Milestone 7:** Navigation node failure detection and recovery — complete
-- **Milestone 8:** Integrated dashboard and final demo — in progress
+- **Milestone 8:** Simulation environment enhancement — next
+- **Milestone 9:** Fault monitoring dashboard — in progress
+- **Milestone 10:** Nav2 goal / waypoint navigation integration — planned
+- **Milestone 11:** Nav2 lifecycle-based recovery — planned
+- **Milestone 12:** Multi-fault scenarios and policy verification — planned
+- **Milestone 13:** Scenario manager and quantitative evaluation — planned
+- **Milestone 14:** Real-robot deployment — optional extension
