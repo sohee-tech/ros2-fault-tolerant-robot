@@ -31,7 +31,7 @@ This capstone project focuses on detecting runtime faults in a mobile robot, deg
 ### Next
 - [x] Default idle-stop behavior when navigation commands disappear
 - [x] Odometry anomaly detection
-- [ ] Control latency detection
+- [x] Control latency detection
 - [ ] Navigation node failure detection
 - [ ] Automated multi-scenario evaluation
 - [ ] Status dashboard
@@ -78,6 +78,41 @@ Observed transition timing in one simulation run:
 - 18.15 s: robot motion resumed
 
 
+
+
+## Fault 3 — Control Latency
+
+A real command-delay injector now holds incoming navigation commands before forwarding them, allowing the system to measure and respond to actual control latency rather than a simulated fault flag.
+
+Implemented behavior:
+
+- normal delay: approximately 0 ms
+- DEGRADED injection: 300 ms
+- CRITICAL injection: 700 ms
+- measured latency is published and monitored at runtime
+- 3 consecutive delayed commands are required for WARNING/DEGRADED escalation
+- 2 consecutive commands above the CRITICAL threshold are required for CRITICAL
+- 2 s of healthy latency is required before recovery to NORMAL
+- stale queued commands are discarded when the delay fault is disabled
+
+Response policy:
+
+- DEGRADED: existing speed limiter reduces motion from 0.20 m/s to 0.10 m/s
+- CRITICAL: existing high-priority safety path forces final velocity to 0.00 m/s
+- recovery: normal motion resumes automatically after the healthy hold
+
+| Phase | Injected delay | Measured latency | Final command | State |
+|---|---:|---:|---:|---|
+| Normal | 0 ms | ~0.1 ms | 0.20 m/s | NORMAL |
+| DEGRADED | 300 ms | ~0.30 s | 0.10 m/s | DEGRADED |
+| CRITICAL | 700 ms | ~0.70 s | 0.00 m/s | CRITICAL |
+| Recovered | 0 ms | sub-ms | 0.20 m/s | NORMAL |
+
+Automated verification:
+- Fault 3: 36/36 checks PASS in GUI and headless simulation
+- Fault 1 regression: 23/23 PASS
+- Fault 2 regression: 21/21 PASS
+- no stale-command burst observed after disabling the delay fault
 
 ## Fault 2 — Odometry Anomaly
 
@@ -180,4 +215,5 @@ Concepts such as fault detection, degraded operation, and minimal-risk behavior 
 - **Milestone 3:** Independent safety arbitration with `twist_mux` — complete
 - **Milestone 4:** Navigation-command timeout safety behavior — complete
 - **Milestone 5:** Odometry anomaly detection — complete
-- **Milestone 6:** Control latency detection — next
+- **Milestone 6:** Control latency detection — complete
+- **Milestone 7:** Navigation node failure detection and recovery — in progress
