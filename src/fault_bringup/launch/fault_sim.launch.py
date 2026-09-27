@@ -9,8 +9,11 @@ Commands: nav_command_source (respawn) -> /cmd_vel_nav_raw -> control_delay_inje
 Arguments:
   gui:=true|false        Gazebo client window
   dashboard:=true|false  fault_dashboard (status + fault injection buttons)
-  demo:=true|false       integrated demo: robot circles (r = 0.4 m) between four pillars around
-                         (-0.55, -0.55) so it can drive for minutes; camera aimed at that spot
+  world:=test|warehouse  test = TurtleBot3 world (regression tests, default)
+                         warehouse = 14 m x 10 m AMR warehouse (worlds/amr_warehouse.world)
+  demo:=true|false       integrated demo: robot drives a 0.4 m circle so it can drive for minutes
+                         (test world: between four pillars around (-0.55, -0.55);
+                          warehouse: inside the start zone around (0, -3.5))
 """
 import os
 from ament_index_python.packages import get_package_share_directory
@@ -22,9 +25,19 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
-# demo: start tangent to a 0.4 m circle around (-0.55, -0.55); 0.2 m/s / 0.4 m = 0.5 rad/s
-DEMO = {'world': 'turtlebot3_world_demo.world', 'x': '-0.55', 'y': '-0.95', 'angular_z': 0.5}
-TEST = {'world': 'turtlebot3_world_vis.world', 'x': '-2.0', 'y': '-0.5', 'angular_z': 0.0}
+# (world, demo) -> world file, spawn pose, nav_command_source angular_z
+# demo: start tangent to a 0.4 m circle (0.2 m/s / 0.4 m = 0.5 rad/s)
+CONFIGS = {
+    ('test', False): {'world': 'turtlebot3_world_vis.world', 'x': '-2.0', 'y': '-0.5', 'yaw': '0.0',
+                      'angular_z': 0.0},
+    ('test', True): {'world': 'turtlebot3_world_demo.world', 'x': '-0.55', 'y': '-0.95', 'yaw': '0.0',
+                     'angular_z': 0.5},
+    # warehouse: start zone, facing north up the main aisle
+    ('warehouse', False): {'world': 'amr_warehouse.world', 'x': '0.0', 'y': '-4.0', 'yaw': '1.5708',
+                           'angular_z': 0.0},
+    ('warehouse', True): {'world': 'amr_warehouse.world', 'x': '0.0', 'y': '-3.9', 'yaw': '0.0',
+                          'angular_z': 0.5},
+}
 
 
 def generate_launch_description():
@@ -32,6 +45,7 @@ def generate_launch_description():
         DeclareLaunchArgument('gui', default_value='true'),
         DeclareLaunchArgument('dashboard', default_value='false'),
         DeclareLaunchArgument('demo', default_value='false'),
+        DeclareLaunchArgument('world', default_value='test'),
         OpaqueFunction(function=nodes),
     ])
 
@@ -40,7 +54,11 @@ def nodes(context):
     share = get_package_share_directory('fault_bringup')
     tb3 = os.path.join(get_package_share_directory('turtlebot3_gazebo'), 'launch')
     gz = os.path.join(get_package_share_directory('gazebo_ros'), 'launch')
-    cfg = DEMO if LaunchConfiguration('demo').perform(context) == 'true' else TEST
+    world_name = LaunchConfiguration('world').perform(context)
+    demo = LaunchConfiguration('demo').perform(context) == 'true'
+    if (world_name, demo) not in CONFIGS:
+        raise RuntimeError(f"world:={world_name} is not one of: test, warehouse")
+    cfg = CONFIGS[(world_name, demo)]
     world = os.path.join(share, 'worlds', cfg['world'])
     model = os.path.join(share, 'models', 'turtlebot3_burger_fault', 'model.sdf')
     gui = LaunchConfiguration('gui')
@@ -58,7 +76,7 @@ def nodes(context):
             launch_arguments={'use_sim_time': 'true'}.items()),
         Node(package='gazebo_ros', executable='spawn_entity.py', output='screen',
              arguments=['-entity', 'burger', '-file', model,
-                        '-x', cfg['x'], '-y', cfg['y'], '-z', '0.01']),
+                        '-x', cfg['x'], '-y', cfg['y'], '-z', '0.01', '-Y', cfg['yaw']]),
         Node(package='fault_injector', executable='lidar_fault_injector', output='screen',
              parameters=[{'use_sim_time': True}]),
         Node(package='fault_injector', executable='odom_fault_injector', output='screen',
