@@ -24,8 +24,8 @@ NAV_SPEED = 0.2
 
 
 class Fault1Test(Node):
-    def __init__(self):
-        super().__init__('fault1_test', parameter_overrides=[
+    def __init__(self, name='fault1_test'):
+        super().__init__(name, parameter_overrides=[
             Parameter('use_sim_time', value=True)])
         self.scan_times = []          # sim time of each /scan receive
         self.states = []              # (sim_time, state) on change

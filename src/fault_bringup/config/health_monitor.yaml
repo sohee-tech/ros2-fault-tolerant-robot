@@ -1,10 +1,23 @@
 health_monitor:
   ros__parameters:
     use_sim_time: true
+    rate: 20.0
+    log_dir: ~/capstone_fault_ws/logs
+
+    # Fault 1: LiDAR message age [s]
     warning_age: 0.3
     degraded_age: 0.7
     critical_age: 1.0
-    hold_ticks: 2
-    recovery_time: 2.0
-    rate: 20.0
-    log_dir: ~/capstone_fault_ws/logs
+    hold_ticks: 2               # consecutive ticks before escalating
+    recovery_time: 2.0          # healthy scans needed before NORMAL
+
+    # Fault 2: odometry plausibility (TurtleBot3 Burger max 0.22 m/s)
+    odom_max_speed: 0.5         # physical bound |vx| [m/s]
+    odom_max_accel: 5.0         # physical bound |dvx/dt| vs last valid sample [m/s^2]
+    odom_cmd_error: 0.3         # |odom vx - final cmd_vel x| [m/s]
+    odom_cmd_error_samples: 5   # consecutive samples before cmd_mismatch counts (~0.17 s @30 Hz)
+    odom_degrade_samples: 5     # consecutive rejected samples -> DEGRADED
+    odom_recovery_time: 2.0     # valid odom needed before NORMAL [s]
+
+    # Response
+    degraded_speed_limit: 0.10  # linear speed cap while system state >= DEGRADED [m/s]

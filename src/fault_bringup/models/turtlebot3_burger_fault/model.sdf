@@ -386,6 +386,7 @@
 
       <ros>
         <!-- <namespace>/tb3</namespace> -->
+        <remapping>odom:=odom_raw</remapping>  <!-- relayed to /odom by odom_fault_injector -->
       </ros>
 
       <update_rate>30</update_rate>

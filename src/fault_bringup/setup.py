@@ -30,6 +30,7 @@ setup(
     entry_points={
         'console_scripts': [
             'fault1_test = fault_bringup.fault1_test:main',
+            'fault2_test = fault_bringup.fault2_test:main',
         ],
     },
 )

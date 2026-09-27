@@ -1,6 +1,9 @@
-"""Fault 1 (LiDAR dropout): Gazebo + TB3 Burger (/scan_raw) + injector + health monitor + twist_mux.
+"""Fault test system: Gazebo + TB3 Burger + fault injectors + health monitor + command arbitration.
 
-Command flow: /cmd_vel_safety (255), /cmd_vel_nav (10), /cmd_vel_idle_stop (1) -> twist_mux -> /cmd_vel
+Sensors:  Gazebo /scan_raw -> lidar_fault_injector -> /scan
+          Gazebo /odom_raw -> odom_fault_injector  -> /odom
+Commands: /cmd_vel_nav -> speed_limiter -> /cmd_vel_nav_limited (prio 10)
+          /cmd_vel_safety (255), /cmd_vel_idle_stop (1)  -> twist_mux -> /cmd_vel
 """
 import os
 from ament_index_python.packages import get_package_share_directory
@@ -36,6 +39,10 @@ def generate_launch_description():
              arguments=['-entity', 'burger', '-file', model,
                         '-x', '-2.0', '-y', '-0.5', '-z', '0.01']),
         Node(package='fault_injector', executable='lidar_fault_injector', output='screen',
+             parameters=[{'use_sim_time': True}]),
+        Node(package='fault_injector', executable='odom_fault_injector', output='screen',
+             parameters=[{'use_sim_time': True}]),
+        Node(package='fault_monitor', executable='speed_limiter', output='screen',
              parameters=[{'use_sim_time': True}]),
         Node(package='twist_mux', executable='twist_mux', output='screen',
              parameters=[os.path.join(share, 'config', 'twist_mux.yaml')],

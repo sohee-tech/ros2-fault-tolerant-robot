@@ -4,7 +4,7 @@ twist_mux:
     use_sim_time: true
     topics:
       navigation:
-        topic   : cmd_vel_nav
+        topic   : cmd_vel_nav_limited   # /cmd_vel_nav after speed_limiter
         timeout : 0.5
         priority: 10
       safety:

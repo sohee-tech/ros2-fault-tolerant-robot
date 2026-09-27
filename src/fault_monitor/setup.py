@@ -26,6 +26,7 @@ setup(
         'console_scripts': [
             'health_monitor = fault_monitor.health_monitor:main',
             'idle_stop = fault_monitor.idle_stop:main',
+            'speed_limiter = fault_monitor.speed_limiter:main',
         ],
     },
 )
