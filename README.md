@@ -32,7 +32,7 @@ This capstone project focuses on detecting runtime faults in a mobile robot, deg
 - [x] Default idle-stop behavior when navigation commands disappear
 - [x] Odometry anomaly detection
 - [x] Control latency detection
-- [ ] Navigation node failure detection
+- [x] Navigation node failure detection
 - [ ] Automated multi-scenario evaluation
 - [ ] Status dashboard
 
@@ -79,6 +79,41 @@ Observed transition timing in one simulation run:
 
 
 
+
+
+## Fault 4 — Navigation Command Source Failure
+
+The navigation command source is implemented as a dedicated ROS2 process that publishes both the raw velocity command and a heartbeat containing its PID. The fault test terminates this process for real and relies on launch respawn for recovery.
+
+Implemented behavior:
+
+- navigation source publishes `0.20 m/s` and heartbeat at 10 Hz
+- `/nav_fault/crash` terminates the navigation process with a non-zero exit
+- launch respawns the process after a configured delay
+- heartbeat age drives NORMAL → WARNING → DEGRADED → CRITICAL
+- existing idle-stop and safety paths stop the robot while the source is unavailable
+- a 2 s healthy heartbeat window is required before returning to NORMAL
+- restart count and PID changes are tracked
+- crash-loop mode verifies repeated restart failure while keeping the robot stopped
+
+Observed in one GUI run:
+
+- WARNING: ~0.35 s after heartbeat loss
+- DEGRADED: ~0.80 s
+- CRITICAL: ~1.30 s
+- final command in CRITICAL: 0.00 m/s
+- odometry in CRITICAL: 0.000 m/s
+- measured movement during stop: 0.0 mm
+- respawn: approximately 1.5–2.4 s after termination
+- NORMAL recovery: about 2 s after healthy heartbeat resumes
+- automatic motion recovery: ~0.20 m/s
+
+Automated verification:
+- Fault 4: 36/36 checks PASS
+- Fault 1 regression: 23/23 PASS
+- Fault 2 regression: 21/21 PASS
+- Fault 3 regression: 36/36 PASS
+- repeated runs were stabilized by using a workspace-specific Fast DDS UDP transport configuration
 
 ## Fault 3 — Control Latency
 
@@ -216,4 +251,5 @@ Concepts such as fault detection, degraded operation, and minimal-risk behavior 
 - **Milestone 4:** Navigation-command timeout safety behavior — complete
 - **Milestone 5:** Odometry anomaly detection — complete
 - **Milestone 6:** Control latency detection — complete
-- **Milestone 7:** Navigation node failure detection and recovery — in progress
+- **Milestone 7:** Navigation node failure detection and recovery — complete
+- **Milestone 8:** Integrated dashboard and final demo — in progress
