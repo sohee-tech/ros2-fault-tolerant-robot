@@ -1,6 +1,6 @@
 """Automated Fault 2 (odometry velocity spike) test. Requires fault_sim.launch.py running.
 
-The nav command (0.2 m/s @10 Hz on /cmd_vel_nav) stays on for the whole test.
+The nav command (0.2 m/s @10 Hz on /cmd_vel_nav_raw) stays on for the whole test.
 A. normal: cmd_vel 0.2, odom 0.2, NORMAL
 B. one spiked odom sample: rejected, system does not escalate
 C. continuous spike: DEGRADED, speed limited to 0.1 (cmd_vel and real motion)

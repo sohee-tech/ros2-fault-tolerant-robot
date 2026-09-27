@@ -2,7 +2,8 @@
 
 Sensors:  Gazebo /scan_raw -> lidar_fault_injector -> /scan
           Gazebo /odom_raw -> odom_fault_injector  -> /odom
-Commands: /cmd_vel_nav -> speed_limiter -> /cmd_vel_nav_limited (prio 10)
+Commands: /cmd_vel_nav_raw -> control_delay_injector -> /cmd_vel_nav
+          -> speed_limiter -> /cmd_vel_nav_limited (prio 10)
           /cmd_vel_safety (255), /cmd_vel_idle_stop (1)  -> twist_mux -> /cmd_vel
 """
 import os
@@ -42,6 +43,8 @@ def generate_launch_description():
              parameters=[{'use_sim_time': True}]),
         Node(package='fault_injector', executable='odom_fault_injector', output='screen',
              parameters=[{'use_sim_time': True}]),
+        Node(package='fault_injector', executable='control_delay_injector', output='screen',
+             parameters=[os.path.join(share, 'config', 'control_delay.yaml')]),
         Node(package='fault_monitor', executable='speed_limiter', output='screen',
              parameters=[{'use_sim_time': True}]),
         Node(package='twist_mux', executable='twist_mux', output='screen',

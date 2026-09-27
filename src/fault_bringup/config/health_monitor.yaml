@@ -21,3 +21,11 @@ health_monitor:
 
     # Response
     degraded_speed_limit: 0.10  # linear speed cap while system state >= DEGRADED [m/s]
+
+    # Fault 3: control latency measured by control_delay_injector [s]
+    ctrl_warning_latency: 0.10
+    ctrl_degraded_latency: 0.25
+    ctrl_critical_latency: 0.50
+    ctrl_samples: 3             # consecutive delayed commands for WARNING / DEGRADED
+    ctrl_critical_samples: 2    # consecutive commands above critical threshold
+    ctrl_recovery_time: 2.0     # latency < warning needed before NORMAL [s]

@@ -2,7 +2,7 @@
 
 Requires fault1_sim.launch.py running.
 A-C: nav command loss -> idle_stop (prio 1) must stop the robot; nav restart -> drive again.
-D:   forward command (linear.x = NAV_SPEED) on /cmd_vel_nav at 10 Hz during the whole
+D:   forward command (linear.x = NAV_SPEED) on /cmd_vel_nav_raw (nav source) at 10 Hz during the whole
      LiDAR fault; the safety stop must win via twist_mux, and the robot must restart on
      its own after recovery.
 """
@@ -29,17 +29,17 @@ class Fault1Test(Node):
             Parameter('use_sim_time', value=True)])
         self.scan_times = []          # sim time of each /scan receive
         self.states = []              # (sim_time, state) on change
-        self.nav = []                 # (sim_time, linear.x) seen on /cmd_vel_nav
+        self.nav = []                 # (sim_time, linear.x) seen on /cmd_vel_nav_raw (nav source)
         self.out = []                 # (sim_time, linear.x) seen on /cmd_vel (mux output)
         self.odom = None
         self.nav_enabled = True
         self.create_subscription(LaserScan, 'scan', self.on_scan, qos_profile_sensor_data)
         self.create_subscription(Odometry, 'odom', self.on_odom, 10)
-        self.create_subscription(Twist, 'cmd_vel_nav', lambda m: self.nav.append((self.now(), m.linear.x)), 10)
+        self.create_subscription(Twist, 'cmd_vel_nav_raw', lambda m: self.nav.append((self.now(), m.linear.x)), 10)
         self.create_subscription(Twist, 'cmd_vel', lambda m: self.out.append((self.now(), m.linear.x)), 10)
         latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.create_subscription(String, 'health/state', self.on_state, latched)
-        self.pub_nav = self.create_publisher(Twist, 'cmd_vel_nav', 10)
+        self.pub_nav = self.create_publisher(Twist, 'cmd_vel_nav_raw', 10)
         self.cli_enable = self.create_client(Trigger, 'lidar_fault/enable')
         self.cli_disable = self.create_client(Trigger, 'lidar_fault/disable')
         self.results = []
@@ -144,7 +144,7 @@ class Fault1Test(Node):
                    f'(vx={s["vx"]:.4f}, moved {s["moved"] * 1000:.1f} mm)')
 
         print('== 2c. nav publisher recreated', flush=True)
-        self.pub_nav = self.create_publisher(Twist, 'cmd_vel_nav', 10)
+        self.pub_nav = self.create_publisher(Twist, 'cmd_vel_nav_raw', 10)
         self.nav_enabled = True
         self.spin_for(1.5)
         s = self.snapshot('nav recovered')

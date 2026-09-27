@@ -1,4 +1,4 @@
-"""System health monitor (LiDAR + odometry).
+"""System health monitor (LiDAR + odometry + control latency).
 
 LiDAR (Fault 1): age of the last /scan message (receive time, node clock = sim time)
   drives NORMAL -> WARNING -> DEGRADED -> CRITICAL.
@@ -14,7 +14,13 @@ Odometry (Fault 2): every /odom sample gets a plausibility check.
   `odom_degrade_samples` consecutive rejects -> odom DEGRADED; valid samples for
   `odom_recovery_time` s -> NORMAL.
 
-System state = worst of LiDAR and odometry state.
+Control latency (Fault 3): /control/latency_sec (measured by control_delay_injector
+  per forwarded nav command) drives NORMAL -> WARNING -> DEGRADED -> CRITICAL.
+  - Escalation: one level per sample; WARNING/DEGRADED need `ctrl_samples`,
+    CRITICAL needs `ctrl_critical_samples` consecutive samples at/above the threshold.
+  - Recovery: latency < ctrl_warning_latency for `ctrl_recovery_time` s -> NORMAL.
+
+System state = worst of LiDAR, odometry and control latency state.
   - >= DEGRADED: /health/speed_limit = degraded_speed_limit (speed_limiter clamps nav)
   - CRITICAL:    zero Twist on /cmd_vel_safety every tick (twist_mux priority -> stop)
 """
@@ -53,6 +59,12 @@ class HealthMonitor(Node):
         self.odom_cmd_error_samples = p('odom_cmd_error_samples', 5)
         self.odom_degrade_samples = p('odom_degrade_samples', 5)
         self.odom_recovery_time = p('odom_recovery_time', 2.0)
+        # Control latency
+        self.ctrl_thresholds = [0.0, p('ctrl_warning_latency', 0.10),
+                                p('ctrl_degraded_latency', 0.25), p('ctrl_critical_latency', 0.50)]
+        self.ctrl_samples = p('ctrl_samples', 3)
+        self.ctrl_critical_samples = p('ctrl_critical_samples', 2)
+        self.ctrl_recovery_time = p('ctrl_recovery_time', 2.0)
         # Response
         self.degraded_speed_limit = p('degraded_speed_limit', 0.10)
         rate = p('rate', 20.0)
@@ -74,12 +86,20 @@ class HealthMonitor(Node):
         self.tick_invalid = False         # any invalid sample since last CSV row
         self.tick_errors = set()
         self.odom_fault = False
+        # Control latency state
+        self.control_state = NORMAL
+        self.ctrl_counts = [0, 0, 0, 0]   # consecutive samples >= threshold of each level
+        self.ctrl_healthy_since = None
+        self.latency = NAN
+        self.delay_mode = 'NONE'
+        self.injected_delay = 0.0
         # System
         self.state = NORMAL
         self.speed_limit = 0.0
         self.odom_vx = NAN
         self.odom_raw_vx = NAN
         self.nav_vx = NAN
+        self.nav_raw_vx = NAN
         self.out_vx = NAN
 
         latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
@@ -87,6 +107,12 @@ class HealthMonitor(Node):
         self.create_subscription(Odometry, 'odom', self.on_odom, 10)
         self.create_subscription(Odometry, 'odom_raw', self.on_odom_raw, 10)
         self.create_subscription(Twist, 'cmd_vel_nav', self.on_nav, 10)
+        self.create_subscription(Twist, 'cmd_vel_nav_raw', self.on_nav_raw, 10)
+        self.create_subscription(Float64, 'control/latency_sec', self.on_latency, 10)
+        self.create_subscription(String, 'control/delay_mode',
+                                 lambda m: setattr(self, 'delay_mode', m.data), latched)
+        self.create_subscription(Float64, 'control/injected_delay_sec',
+                                 lambda m: setattr(self, 'injected_delay', m.data), latched)
         self.create_subscription(Twist, 'cmd_vel', self.on_out, 10)
         self.create_subscription(Bool, 'lidar_fault/active', self.on_lidar_fault, latched)
         self.create_subscription(Bool, 'odom_fault/active', self.on_odom_fault, latched)
@@ -95,6 +121,7 @@ class HealthMonitor(Node):
         self.pub_state = self.create_publisher(String, 'health/state', latched)
         self.pub_lidar_state = self.create_publisher(String, 'health/lidar_state', latched)
         self.pub_odom_state = self.create_publisher(String, 'health/odom_state', latched)
+        self.pub_control_state = self.create_publisher(String, 'health/control_state', latched)
         self.pub_limit = self.create_publisher(Float64, 'health/speed_limit', latched)
         self.pub_age = self.create_publisher(Float64, 'health/scan_age', 10)
         self.pub_odom_valid = self.create_publisher(Bool, 'health/odom_valid', 10)
@@ -106,15 +133,17 @@ class HealthMonitor(Node):
         self.csv_file = open(self.csv_path, 'w', newline='')
         self.csv = csv.writer(self.csv_file)
         self.csv.writerow([
-            'timestamp', 'sim_time', 'system_state', 'lidar_state', 'odom_state',
+            'timestamp', 'sim_time', 'system_state', 'lidar_state', 'odom_state', 'control_state',
             'scan_age', 'lidar_fault_enabled', 'odom_fault_enabled',
             'odom_raw_vx', 'odom_output_vx', 'odom_valid', 'odom_error', 'odom_invalid_total',
-            'degraded_speed_limit', 'safety_stop_active', 'cmd_vel_nav_x', 'cmd_vel_out_x'])
+            'degraded_speed_limit', 'safety_stop_active', 'cmd_vel_nav_x', 'cmd_vel_out_x',
+            'control_latency_sec', 'delay_mode', 'injected_delay_sec', 'cmd_vel_nav_raw_x'])
 
         self.create_timer(1.0 / rate, self.tick)
         self.pub_state.publish(String(data=NAMES[self.state]))
         self.pub_lidar_state.publish(String(data=NAMES[self.lidar_state]))
         self.pub_odom_state.publish(String(data=NAMES[self.odom_state]))
+        self.pub_control_state.publish(String(data=NAMES[self.control_state]))
         self.pub_limit.publish(Float64(data=self.speed_limit))
         self.get_logger().info(f'Health monitor started, CSV: {self.csv_path}')
 
@@ -130,6 +159,9 @@ class HealthMonitor(Node):
 
     def on_nav(self, msg):
         self.nav_vx = msg.linear.x
+
+    def on_nav_raw(self, msg):
+        self.nav_raw_vx = msg.linear.x
 
     def on_out(self, msg):
         self.out_vx = msg.linear.x
@@ -209,6 +241,45 @@ class HealthMonitor(Node):
             self.get_logger().warn(f'[ODOM {NAMES[new]}] {reason}')
         self.update_system()
 
+    # --- control latency state machine -----------------------------------
+    def on_latency(self, msg):
+        lat = msg.data
+        now = self.now()
+        self.latency = lat
+        for lvl in (WARNING, DEGRADED, CRITICAL):
+            self.ctrl_counts[lvl] = self.ctrl_counts[lvl] + 1 if lat >= self.ctrl_thresholds[lvl] else 0
+
+        nxt = self.control_state + 1
+        if nxt <= CRITICAL:
+            need = self.ctrl_critical_samples if nxt == CRITICAL else self.ctrl_samples
+            if self.ctrl_counts[nxt] >= need:
+                self.set_control_state(nxt, lat)
+                return
+        if self.control_state == NORMAL:
+            return
+        if lat >= self.ctrl_thresholds[WARNING]:
+            self.ctrl_healthy_since = None
+        elif self.ctrl_healthy_since is None:
+            self.ctrl_healthy_since = now
+            self.get_logger().info(
+                f'[{NAMES[self.control_state]}] control latency normal again ({lat * 1000:.0f} ms), '
+                f'recovering (need {self.ctrl_recovery_time:.1f} s healthy)')
+        elif now - self.ctrl_healthy_since >= self.ctrl_recovery_time:
+            self.set_control_state(NORMAL, lat)
+
+    def set_control_state(self, new, lat):
+        self.control_state = new
+        self.ctrl_healthy_since = None
+        self.pub_control_state.publish(String(data=NAMES[new]))
+        msg = f'control latency {lat * 1000:.0f} ms'
+        if new == NORMAL:
+            self.get_logger().info(f'[CONTROL NORMAL] {msg}')
+        elif new == CRITICAL:
+            self.get_logger().error(f'[CONTROL CRITICAL] {msg} -> SAFE STOP')
+        else:
+            self.get_logger().warn(f'[CONTROL {NAMES[new]}] {msg}')
+        self.update_system()
+
     # --- LiDAR state machine ---------------------------------------------
     def lidar_level(self, age):
         if age > self.critical_age:
@@ -258,11 +329,12 @@ class HealthMonitor(Node):
 
     # --- system ------------------------------------------------------------
     def update_system(self):
-        new = max(self.lidar_state, self.odom_state)
+        new = max(self.lidar_state, self.odom_state, self.control_state)
         if new != self.state:
             self.get_logger().info(
                 f'system state {NAMES[self.state]} -> {NAMES[new]} '
-                f'(lidar {NAMES[self.lidar_state]}, odom {NAMES[self.odom_state]})')
+                f'(lidar {NAMES[self.lidar_state]}, odom {NAMES[self.odom_state]}, '
+                f'control {NAMES[self.control_state]})')
             self.state = new
             self.pub_state.publish(String(data=NAMES[new]))  # latched; on change only
         limit = self.degraded_speed_limit if self.state >= DEGRADED else 0.0
@@ -284,11 +356,12 @@ class HealthMonitor(Node):
         self.pub_age.publish(Float64(data=age))
         self.csv.writerow([
             f'{time.time():.3f}', f'{now:.3f}', NAMES[self.state],
-            NAMES[self.lidar_state], NAMES[self.odom_state],
+            NAMES[self.lidar_state], NAMES[self.odom_state], NAMES[self.control_state],
             f'{age:.3f}', int(self.lidar_fault), int(self.odom_fault),
             f'{self.odom_raw_vx:.4f}', f'{self.odom_vx:.4f}', int(not self.tick_invalid),
             '|'.join(sorted(self.tick_errors)) or 'none', self.odom_invalid_total,
-            f'{self.speed_limit:.2f}', int(safe_stop), f'{self.nav_vx:.3f}', f'{self.out_vx:.3f}'])
+            f'{self.speed_limit:.2f}', int(safe_stop), f'{self.nav_vx:.3f}', f'{self.out_vx:.3f}',
+            f'{self.latency:.3f}', self.delay_mode, f'{self.injected_delay:.2f}', f'{self.nav_raw_vx:.3f}'])
         self.csv_file.flush()
         self.tick_invalid = False
         self.tick_errors.clear()

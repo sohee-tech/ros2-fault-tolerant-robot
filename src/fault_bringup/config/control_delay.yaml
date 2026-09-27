@@ -1,0 +1,8 @@
+# Fault 3 injector: /cmd_vel_nav_raw -> (delay) -> /cmd_vel_nav
+# Runs on wall/steady time (latency is measured with a monotonic clock).
+control_delay_injector:
+  ros__parameters:
+    degraded_delay_sec: 0.30
+    critical_delay_sec: 0.70
+    max_queue: 50          # bounded queue, oldest dropped first
+    release_rate: 200.0    # queue check rate [Hz]
