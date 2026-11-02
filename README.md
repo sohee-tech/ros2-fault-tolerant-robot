@@ -6,6 +6,30 @@
 
 ![Warehouse AMR environment](docs/images/amr_warehouse.png)
 
+<!-- SAFE-RESUME-MOBILE-2026-11 -->
+## Safe Resume Gate & QR mobile monitoring (Nov 2026)
+
+**Fault response continues beyond the emergency stop:** a robot may resume its warehouse delivery only after its safety checks pass. A **read-only mobile monitor** makes the current status, fault cause, recovery stage and mission progress visible to an operator on a phone, with no separate app or account.
+
+![Two actual mobile AMR Monitor states: NORMAL / Safe Resume APPROVED and 5/5 waypoint delivery completed](docs/images/mobile_monitoring_showcase.webp)
+
+*Actual mobile monitoring views from the home-network demonstration — normal operation (left) and 5/5 delivery mission completed (right). The QR link is generated dynamically for the current local network.*
+
+| Feature | Implementation / verification |
+|---|---|
+| **Safe Resume Gate** | LiDAR, validated odometry, Nav2 lifecycle, AMCL localization, forward obstacle clearance, control latency, and overall monitor health; approval after 3 s of stable valid conditions. |
+| **Fail-closed motion gating** | Missing, stale, or unhealthy inputs block restart. Nav2 velocity is held at zero if permission is missing/expired. |
+| **Recovery and mission continuity** | Existing Nav2 recovery and waypoint runner resume the interrupted delivery when authorized. |
+| **Operator monitoring** | LAN QR code → responsive mobile dashboard, live WebSocket updates, diagnosed fault status, location, recovery progress, alert history, and Safe Resume reason. |
+| **Read-only safety separation** | The web service does not publish robot motion commands or invoke recovery services. |
+| **Observed tests** | Safe Resume integration: 176/176 checks passed in the reported test run; Nav2 recovery: 42/42 checks passed in the reported final run; real phone connected over home Wi-Fi and displayed normal state plus mission completion. |
+
+**Demo (once the locally implemented web package is committed):** `./run_web_demo.sh` starts the robot simulation and mobile monitoring; `./run_web_monitor.sh` connects the read-only monitor to a running robot. The phone must be able to reach the laptop on the same LAN. Some campus Wi-Fi networks isolate clients; use a permitted hotspot/router in that case. QR codes contain a network-local address, not a globally accessible service.
+
+**Known limitations to resolve before final review:** occasional waypoint goal-position error above 0.25 m; AMCL covariance threshold / no-motion-update false-stop behavior; forward-only obstacle clearance (reverse and in-place rotation not yet evaluated). A successful unit/integration test is **not** a functional-safety certification. At the time of this README update, the Safe Resume and web-monitor source changes are still in the local worktree pending a separate code push.
+
+---
+
 ## Why this project?
 
 Autonomous mobile robots usually operate under the assumption that sensors, control messages, and navigation processes remain healthy.
