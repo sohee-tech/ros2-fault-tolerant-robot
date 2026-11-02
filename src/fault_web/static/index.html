@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8"><title>AMR MONITOR</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>
+html{background:#f1f3f5}
+:root{--ok:#1f9d46;--warning:#e6c200;--degraded:#ef7d12;--critical:#d62b2b;--recovery:#1c6fd1;--blocked:#b3161d;--unknown:#5f6670}
+*{box-sizing:border-box}body{margin:0;background:#f1f3f5;color:#16191d;font-family:-apple-system,"Apple SD Gothic Neo","Noto Sans CJK KR","Malgun Gothic",Roboto,sans-serif;font-size:16px;line-height:1.4}
+main{max-width:640px;margin:0 auto;padding:0 12px 28px}
+header{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#16191d;color:#fff;gap:8px}
+header b{font-size:1.05rem;letter-spacing:.02em}#conn{font-size:.82rem;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--unknown);white-space:nowrap}
+#conn.on{background:var(--ok)}#conn.off{background:var(--critical)}
+#fatal{display:none;background:#b3161d;color:#fff;padding:12px 14px;font-weight:700}#fatal a{color:#fff}
+noscript div{background:#b3161d;color:#fff;padding:12px 14px;font-weight:700}
+#offline{display:none;background:#2b2f35;color:#fff;padding:12px 14px;font-weight:700}
+body.offline #offline{display:block}body.offline .live{opacity:.45;filter:grayscale(1)}
+#banner{margin:12px 0;padding:18px 16px;border-radius:12px;color:#fff;background:var(--unknown)}
+#banner h1{margin:0;font-size:1.65rem;line-height:1.25}#banner p{margin:6px 0 0;font-size:1.02rem;font-weight:600;word-break:keep-all}
+.b-ok{background:var(--ok)!important}.b-warning{background:var(--warning)!important;color:#111!important}.b-degraded{background:var(--degraded)!important;color:#111!important}
+.b-critical{background:var(--critical)!important}.b-recovery{background:var(--recovery)!important}.b-blocked{background:var(--blocked)!important}.b-unknown{background:var(--unknown)!important}
+.card{background:#fff;border-radius:12px;padding:12px 14px;margin-bottom:12px;box-shadow:0 1px 2px #0002}
+.card h2{margin:0 0 8px;font-size:.95rem;color:#596069;font-weight:700}
+.row{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-top:1px solid #eef0f2}.row:first-of-type{border-top:0}
+.row>span:first-child{color:#596069;white-space:nowrap}.row>span:last-child{font-weight:700;text-align:right;word-break:keep-all}
+.chip{display:inline-block;padding:2px 9px;border-radius:999px;color:#fff;font-weight:700;background:var(--unknown)}
+.s-NORMAL,.s-APPROVED{background:var(--ok)}.s-WARNING,.s-WAITING{background:var(--warning);color:#111}.s-DEGRADED{background:var(--degraded);color:#111}
+.s-CRITICAL{background:var(--critical)}.s-BLOCKED{background:var(--blocked)}.s-VERIFYING{background:var(--recovery)}
+.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;text-align:center;font-size:.76rem}.grid div{padding:6px 2px;border-radius:8px;color:#fff;font-weight:700;background:var(--unknown)}
+#reasons{margin:6px 0 0;padding:0;list-style:none}#reasons li{padding:6px 8px;margin-top:6px;background:#fdeaea;color:#8c1218;border-radius:8px;font-weight:700}#reasons small{display:block;font-weight:400;color:#6d4044;word-break:break-all}
+.item{padding:8px 0;border-top:1px solid #eef0f2}.item:first-of-type{border-top:0}.item b{display:block}.item small{color:#596069;display:block;word-break:keep-all}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;background:var(--unknown)}
+.d-critical,.d-blocked{background:var(--critical)}.d-degraded{background:var(--degraded)}.d-warning{background:var(--warning)}.d-recovery{background:var(--recovery)}.d-ok{background:var(--ok)}
+.empty{color:#7a818a}#foot{color:#596069;font-size:.78rem;text-align:center}
+.hidden{display:none}.flash{animation:f .6s ease-in-out 4}@keyframes f{50%{filter:brightness(1.5)}}
+</style></head>
+<body class="offline">
+<header><b>AMR MONITOR</b><span id="conn">CONNECTING</span></header>
+<noscript><div>이 브라우저에서 JavaScript가 꺼져 있어 실시간 상태를 표시할 수 없습니다. 주소를 Chrome 또는 Safari에서 직접 여세요.</div></noscript>
+<div id="fatal" role="alert"></div>
+<div id="offline" role="alert">서버에 연결하는 중입니다…</div>
+<script>
+/* ES5 on purpose: this part must run even where the main script cannot, so a failure is shown and reported. */
+(function(){
+  function beacon(stage,msg){try{new Image().src='/api/beacon?stage='+stage+'&msg='+encodeURIComponent(msg||'')+'&t='+new Date().getTime();}catch(e){}}
+  function fatal(text){var f=document.getElementById('fatal');if(!f)return;f.style.display='block';f.textContent=text;
+    var a=document.createElement('a');a.href=location.href;a.textContent=' [다시 시도]';f.appendChild(a);}
+  var reported=false;
+  window.__fatal=function(msg){if(!reported){reported=true;beacon('error',msg);}
+    fatal('화면 표시 중 오류가 발생했습니다. 주소를 Chrome 또는 Safari에서 직접 여세요. ('+msg+')');};
+  window.onerror=function(msg,src,line){window.__fatal(msg+' @'+line);};
+  beacon('js');
+  setTimeout(function(){if(!window.__booted)window.__fatal('화면 초기화 실패: 지원되지 않는 브라우저일 수 있습니다');},4000);
+})();
+</script>
+<main>
+<section id="banner" class="b-unknown live" role="status"><h1 id="b-title">서버 연결 중</h1><p id="b-text"></p></section>
+<section class="card live hidden" id="fault-card"><h2>장애 정보</h2>
+  <div class="row"><span>고장 유형</span><span id="f-type"></span></div>
+  <div class="row"><span>발생 위치</span><span id="f-loc"></span></div>
+  <div class="row"><span>발생 시각</span><span id="f-time"></span></div>
+  <div class="row"><span>경과 시간</span><span id="f-elapsed"></span></div>
+</section>
+<section class="card live hidden" id="resolved-card"><h2>복구 결과</h2>
+  <div class="row"><span>고장 상태</span><span>해결</span></div>
+  <div class="row"><span>해결된 고장</span><span id="r-type"></span></div>
+  <div class="row"><span>현재 임무</span><span id="r-mission"></span></div>
+  <div class="row"><span>복구 소요 시간</span><span id="r-time"></span></div>
+</section>
+<section class="card live"><h2>Safe Resume</h2>
+  <div class="row"><span>재출발 판단</span><span><span id="gate" class="chip">--</span></span></div>
+  <div class="row hidden" id="gate-progress-row"><span>검증 진행</span><span id="gate-progress"></span></div>
+  <ul id="reasons"></ul>
+</section>
+<section class="card live"><h2>현재 상태</h2>
+  <div class="row"><span>로봇</span><span id="robot"></span></div>
+  <div class="row"><span>시스템 상태</span><span><span id="system" class="chip">--</span></span></div>
+  <div class="row"><span>현재 위치</span><span id="pos"></span></div>
+  <div class="row"><span>현재 대응</span><span id="resp"></span></div>
+  <div class="row"><span>자동 복구</span><span id="rec"></span></div>
+  <div class="row"><span>진행 임무</span><span id="mission"></span></div>
+  <div class="row"><span>관리자 조치</span><span id="action"></span></div>
+</section>
+<section class="card live"><h2>센서·서브시스템</h2><div class="grid" id="subs"></div></section>
+<section class="card live"><h2>최근 알림</h2><div id="alerts"><div class="empty">알림 없음</div></div></section>
+<section class="card live"><h2>고장 이력</h2><div id="incidents"><div class="empty">고장 이력 없음</div></div></section>
+<div id="foot">읽기 전용 화면입니다. 로봇을 조작할 수 없습니다. <span id="viewers"></span></div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const SUBS=[['lidar','LiDAR'],['odom','Odom'],['control','제어'],['nav','주행'],['nav2','Nav2']];
+const COLOR={NORMAL:'var(--ok)',WARNING:'var(--warning)',DEGRADED:'var(--degraded)',CRITICAL:'var(--critical)'};
+const WATCHDOG_MS=3500;
+const CONNECT_TIMEOUT_MS=6000;
+let ws=null,lastMsg=0,lastTime=null,retry=0,timer=null,lastAlert=null,online=false,connectTimer=null,everConnected=false;
+window.__booted=true;
+function chip(el,v){el.textContent=v;el.className='chip s-'+v;}
+function show(el,on){el.classList.toggle('hidden',!on);}
+function setOnline(on){
+  online=on;document.body.classList.toggle('offline',!on);
+  $('conn').textContent=on?'CONNECTED':'DISCONNECTED';$('conn').className=on?'on':'off';
+  if(on){$('offline').textContent='';document.title='AMR MONITOR';}
+  else{offlineText();document.title='⚠ 연결 끊김';}
+}
+function offlineText(){
+  if(everConnected)$('offline').textContent='⚠ 서버 연결 끊김, 재연결 중… 아래는 '+lastTime+' 기준의 오래된 정보이며 현재 로봇 상태가 아닙니다.';
+  else if(retry>=2)$('offline').textContent='⚠ 페이지는 열렸지만 실시간 서버 연결(WebSocket)에 실패했습니다. '+retry+'회 재시도 중입니다. VPN·프록시·데이터 절약 모드를 끄거나 다른 브라우저로 여세요. 아래 내용은 로봇 상태가 아닙니다.';
+  else $('offline').textContent='서버에 연결하는 중입니다… 아래 내용은 아직 로봇 상태가 아닙니다.';
+}
+function row(parent,cls,title,sub){
+  const d=document.createElement('div');d.className='item';const b=document.createElement('b');
+  const dot=document.createElement('span');dot.className='dot d-'+cls;b.append(dot,title);d.append(b);
+  sub.filter(Boolean).forEach(t=>{const s=document.createElement('small');s.textContent=t;d.append(s);});parent.append(d);
+}
+function render(v){
+  lastTime=v.time;
+  const bn=$('banner');bn.className='live b-'+v.banner.level;$('b-title').textContent=v.banner.title;$('b-text').textContent=v.banner.text;
+  $('robot').textContent=v.robot_id;chip($('system'),v.system_state);
+  const p=v.position;$('pos').textContent=p.text;$('pos').style.color=p.valid?'':'#b3161d';
+  $('resp').textContent=v.response;$('resp').style.color=v.safe_stop?'#b3161d':'';
+  $('rec').textContent=v.recovery.text;$('mission').textContent=v.mission.text+' · '+v.mission.state_text;
+  $('action').textContent=v.action.required?'필요':'불필요';$('action').style.color=v.action.required?'#b3161d':'';
+  chip($('gate'),v.safe_resume.state);
+  const sr=v.safe_resume,progress=sr.state==='VERIFYING'&&sr.verify_elapsed_s!=null;show($('gate-progress-row'),progress);
+  if(progress)$('gate-progress').textContent=sr.verify_elapsed_s.toFixed(1)+' / '+sr.stable_time_s.toFixed(1)+'초';
+  const rs=$('reasons');rs.textContent='';(sr.reasons||[]).forEach(r=>{const li=document.createElement('li');
+    li.textContent=(sr.state==='APPROVED'?'':'거부 사유: ')+r.text;const sm=document.createElement('small');sm.textContent=r.detail;li.append(sm);rs.append(li);});
+  const f=v.fault;show($('fault-card'),f.active);
+  if(f.active){$('f-type').textContent=f.type||'원인 확인 중';$('f-loc').textContent=f.location;$('f-time').textContent=f.opened;$('f-elapsed').textContent=f.elapsed_s.toFixed(0)+'초';}
+  const r=v.resolved;show($('resolved-card'),r.show);
+  if(r.show){$('r-type').textContent=r.type||'-';$('r-mission').textContent=(r.mission||'-');$('r-time').textContent=(r.at_least?'최소 ':'')+r.duration_s+'초'+(r.at_least?' (웹 서버 중단 중 발생)':r.restored?' (서버 재시작 구간 포함)':'');}
+  const g=$('subs');g.textContent='';SUBS.forEach(([k,l])=>{const d=document.createElement('div');d.textContent=l;const s=v.subsystems[k];d.style.background=COLOR[s]||'';if(s==='WARNING'||s==='DEGRADED')d.style.color='#111';d.title=s||'';g.append(d);});
+  const a=$('alerts');a.textContent='';if(!v.alerts.length){const e=document.createElement('div');e.className='empty';e.textContent='알림 없음';a.append(e);}
+  v.alerts.slice(0,12).forEach(x=>row(a,x.severity==='info'?'unknown':x.severity,x.title,[x.time+' · '+x.text,(x.position?'위치: '+x.position:'')]));
+  const h=$('incidents');h.textContent='';if(!v.incidents.length){const e=document.createElement('div');e.className='empty';e.textContent='고장 이력 없음';h.append(e);}
+  v.incidents.slice(0,10).forEach(i=>row(h,i.resolved?'ok':'critical',`#${i.id} ${i.type}`,[`${i.opened} 발생 · ${i.location}`,i.resolved?`해결 · 복구 ${i.before_start?'최소 ':''}${i.duration_s}초`:'진행 중',i.action_reason?'조치 필요: '+i.action_reason:'']));
+  $('viewers').textContent='· 현재 접속 '+v.viewers+'명';
+  const newest=v.alerts[0];
+  if(newest&&newest.id!==lastAlert){
+    if(lastAlert!==null&&newest.severity==='critical'){bn.classList.remove('flash');void bn.offsetWidth;bn.classList.add('flash');if(navigator.vibrate)try{navigator.vibrate([300,100,300]);}catch(e){}}
+    lastAlert=newest.id;
+  }
+  document.title=(v.banner.level==='critical'||v.banner.level==='blocked'?'🚨 ':'')+'AMR MONITOR';
+}
+function connect(){
+  clearTimeout(timer);
+  if(ws){try{ws.onclose=null;ws.close();}catch(e){}}
+  clearTimeout(connectTimer);
+  try{
+    ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
+  }catch(err){ws=null;failed();return;}
+  const me=ws;
+  connectTimer=setTimeout(()=>{if(me===ws&&me.readyState===0){me.onclose=null;try{me.close();}catch(e){}failed();}},CONNECT_TIMEOUT_MS);
+  ws.onmessage=e=>{let v;try{v=JSON.parse(e.data);}catch(err){return;}if(v.type!=='state')return;
+    lastMsg=Date.now();retry=0;everConnected=true;clearTimeout(connectTimer);if(!online)setOnline(true);
+    try{render(v);}catch(err){window.__fatal('render: '+err.message);}};
+  ws.onclose=()=>{clearTimeout(connectTimer);failed();};
+  ws.onerror=()=>{try{ws.close();}catch(e){}};
+}
+function failed(){if(online)setOnline(false);schedule();offlineText();}
+function schedule(){clearTimeout(timer);timer=setTimeout(connect,Math.min(1000*2**retry,5000));retry++;}
+setInterval(()=>{if(online&&Date.now()-lastMsg>WATCHDOG_MS){setOnline(false);connect();}},500);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&(!online||Date.now()-lastMsg>WATCHDOG_MS)){setOnline(false);connect();}});
+setOnline(false);connect();
+</script></body></html>

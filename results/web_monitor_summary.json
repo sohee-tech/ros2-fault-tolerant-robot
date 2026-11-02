@@ -1,0 +1,26 @@
+{
+  "generated": "2026-11-02T22:04:39",
+  "test_passed": true,
+  "checks_passed": 75,
+  "checks_total": 75,
+  "failed_checks": [],
+  "url": "http://<LAN-IP>:8080/",
+  "scenarios": {
+    "S1": {
+      "push_latency_ms": 189,
+      "reported_recovery_s": 10.9
+    },
+    "S2": {
+      "reported_recovery_s": 12.9,
+      "stages": [
+        "IDLE",
+        "DETECTED",
+        "RECOVERING",
+        "VERIFY",
+        "RECOVERED",
+        "IDLE"
+      ]
+    }
+  },
+  "external_phone_tested": false
+}

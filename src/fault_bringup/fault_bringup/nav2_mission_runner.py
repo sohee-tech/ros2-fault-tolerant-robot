@@ -15,6 +15,11 @@ Sends NavigateToPose goals for the configured waypoints one after another.
   The decision is taken `abort_grace` s after the abort: a Nav2 server that is deactivated aborts
   its goal immediately, before the watchdog has noticed the failure.
 
+Safe Resume (require_safe_resume:=true): the mission only drives while /safe_resume/approved is true and
+fresh (`gate_timeout`). Otherwise it is PAUSED, without using retries or fault re-sends. A goal kept during
+a pause is canceled after `pause_cancel_after` s (Nav2 must not run recovery behaviours on a blocked robot);
+once approved, the kept goal continues or the current waypoint is re-sent.
+
 Topics:  /mission/status  std_msgs/String (JSON, transient local)  mode, state, index, total, name,
                           goal, distance_remaining, retries, reached, results
          /mission/event   std_msgs/String  one line per event (dashboard log)
@@ -63,6 +68,15 @@ class MissionRunner(Node):
         self.fault_context_window = p('fault_context_window', 3.0)
         self.max_fault_resends = p('max_fault_resends', 5)
         self.abort_grace = p('abort_grace', 1.0)
+        self.require_gate = p('require_safe_resume', False)
+        self.gate_timeout = p('gate_timeout', 1.0)
+        self.pause_cancel_after = p('pause_cancel_after', 10.0)
+        self.gate_approved = False
+        self.t_gate = -1e9
+        self.gate_reason = ''
+        self.t_paused = 0.0
+        self.goal_gen = 0               # results of older goals (canceled during a pause) are ignored
+        self.goal_inflight = False
         self.pending_abort = None       # (result, time) waiting for the fault-context decision
         autostart = p('autostart', False)
         self.waypoints = load_waypoints(layout_file, names)
@@ -74,6 +88,10 @@ class MissionRunner(Node):
         self.pub_complete = self.create_publisher(Bool, 'mission/complete', latched)
         self.create_subscription(String, 'health/state', self.on_health, latched)
         self.create_subscription(String, 'nav2_recovery/state', self.on_recovery, latched)
+        if self.require_gate:
+            self.create_subscription(Bool, 'safe_resume/approved', self.on_gate, 10)
+            self.create_subscription(String, 'safe_resume/reason',
+                                     lambda m: setattr(self, 'gate_reason', m.data), latched)
         self.create_service(Trigger, 'mission/start', self.on_start)
 
         self.system_state = 'NORMAL'
@@ -118,6 +136,8 @@ class MissionRunner(Node):
             'total_retries': self.total_retries, 'pauses': self.pauses,
             'fault_resends': self.total_fault_resends, 'nav2_recovery': self.recovery_state,
             'reached': sum(r['result'] == 'SUCCEEDED' for r in self.results),
+            'safe_resume': {'required': self.require_gate, 'approved': self.drive_allowed() if self.require_gate
+                            else None, 'reason': self.gate_reason},
             'mission_time': round(self.now() - self.t_mission, 2) if self.t_mission else None,
             'results': self.results})))
 
@@ -145,16 +165,58 @@ class MissionRunner(Node):
             self.t_abnormal = self.now()
         if self.state == 'RUNNING' and msg.data == 'CRITICAL':
             self.state = 'PAUSED'
+            self.t_paused = self.now()
             self.pauses += 1
             self.event(f'mission PAUSED at waypoint {self.index + 1} (system CRITICAL -> safe stop)')
-        elif self.state == 'PAUSED' and msg.data == 'NORMAL' and prev != 'NORMAL':
+        elif self.state == 'PAUSED' and msg.data == 'NORMAL' and prev != 'NORMAL' and not self.require_gate:
             self.state = 'RUNNING'
             self.event(f'mission RESUMED at waypoint {self.index + 1} (system NORMAL)')
         else:
             return
         self.publish_status()   # state changed: do not wait for the next tick
 
+    # --- Safe Resume ---
+    def drive_allowed(self):
+        return self.gate_approved and self.now() - self.t_gate <= self.gate_timeout
+
+    def on_gate(self, msg):
+        changed = msg.data != self.gate_approved
+        self.gate_approved = msg.data
+        self.t_gate = self.now()
+        if changed:
+            self.update_gate()
+
+    def pause(self, why):
+        self.state = 'PAUSED'
+        self.t_paused = self.now()
+        self.pauses += 1
+        self.event(f'mission PAUSED at waypoint {self.index + 1} ({why})')
+        self.publish_status()
+
+    def update_gate(self):
+        if not self.require_gate:
+            return
+        allowed = self.drive_allowed() and self.system_state != 'CRITICAL'
+        if self.state in ('RUNNING', 'RECOVERING', 'RETRY_WAIT') and not allowed:
+            self.pause(f'Safe Resume not approved: {self.gate_reason or "no permit"}')
+        elif self.state == 'PAUSED' and allowed:
+            if self.goal_handle is not None or self.goal_inflight:
+                self.state = 'RUNNING'
+                self.event(f'mission RESUMED at waypoint {self.index + 1} (Safe Resume approved)')
+                self.publish_status()
+            else:
+                self.event(f'mission RESUMED: sending waypoint {self.index + 1} (Safe Resume approved)')
+                self.send_goal()
+        elif (self.state == 'PAUSED' and self.goal_handle is not None
+              and self.now() - self.t_paused >= self.pause_cancel_after):
+            self.event(f'pause > {self.pause_cancel_after:.0f} s: canceling the Nav2 goal, '
+                       f'waypoint {self.index + 1} is kept')
+            self.goal_gen += 1
+            self.goal_handle.cancel_goal_async()
+            self.goal_handle = None
+
     def tick(self):
+        self.update_gate()
         if self.start_requested and self.state in ('IDLE', 'COMPLETE', 'FAILED'):
             if not self.client.wait_for_server(timeout_sec=0.0):
                 self.publish_status()
@@ -166,7 +228,8 @@ class MissionRunner(Node):
             self.pub_complete.publish(Bool(data=False))
             self.event(f'mission START: {len(self.waypoints)} waypoints')
             self.send_goal()
-        elif self.state in ('RETRY_WAIT', 'RECOVERING') and self.system_state == 'NORMAL':
+        elif (self.state in ('RETRY_WAIT', 'RECOVERING') and self.system_state == 'NORMAL'
+              and (not self.require_gate or self.drive_allowed())):
             if self.t_retry == 0.0:
                 self.t_retry = self.now() + self.retry_delay
             elif self.now() >= self.t_retry:
@@ -184,6 +247,13 @@ class MissionRunner(Node):
 
     def send_goal(self):
         w = self.waypoints[self.index]
+        if self.require_gate and not self.drive_allowed():
+            self.state = 'PAUSED'
+            self.t_paused = self.now()
+            self.event(f'waypoint {self.index + 1} {w["name"]} waits for Safe Resume approval: '
+                       f'{self.gate_reason or "no permit"}')
+            self.publish_status()
+            return
         goal = NavigateToPose.Goal()
         goal.pose = PoseStamped()
         goal.pose.header.frame_id = 'map'
@@ -198,22 +268,34 @@ class MissionRunner(Node):
             self.t_goal = self.now()
         self.event(f'waypoint {self.index + 1}/{len(self.waypoints)} -> {w["name"]} ({w["x"]:.2f}, {w["y"]:.2f})')
         fut = self.client.send_goal_async(goal, feedback_callback=self.on_feedback)
-        fut.add_done_callback(self.on_goal_response)
+        self.goal_gen += 1
+        self.goal_inflight = True
+        fut.add_done_callback(lambda f, g=self.goal_gen: self.on_goal_response(f, g))
+        self.publish_status()           # state changed: do not wait for the next tick
 
     def on_feedback(self, msg):
         self.distance = round(msg.feedback.distance_remaining, 2)
 
-    def on_goal_response(self, fut):
+    def on_goal_response(self, fut, gen):
         handle = fut.result()
+        if gen != self.goal_gen:
+            return
+        self.goal_inflight = False
         if not handle.accepted:
-            self.finish_goal('REJECTED')
+            self.finish_goal('REJECTED', gen)
             return
         self.goal_handle = handle
         handle.get_result_async().add_done_callback(
-            lambda f: self.finish_goal(STATUS_NAMES.get(f.result().status, str(f.result().status))))
+            lambda f: self.finish_goal(STATUS_NAMES.get(f.result().status, str(f.result().status)), gen))
 
-    def finish_goal(self, result):
+    def finish_goal(self, result, gen):
+        if gen != self.goal_gen:
+            return                      # goal was given up during a pause
         self.goal_handle = None
+        if self.require_gate and self.state == 'PAUSED' and result in ('ABORTED', 'CANCELED', 'REJECTED'):
+            self.get_logger().info(f'waypoint {self.index + 1} goal {result} during pause; re-sent when approved')
+            self.publish_status()
+            return
         if result == 'REJECTED':
             now = self.now()
             self.t_rejected = self.t_rejected or now
@@ -235,6 +317,9 @@ class MissionRunner(Node):
     def handle_result(self, result):
         """Final handling of a goal result (ABORTED / CANCELED arrive here after abort_grace)."""
         w = self.waypoints[self.index]
+        if result in ('ABORTED', 'CANCELED') and self.require_gate and not self.drive_allowed():
+            self.pause(f'{result}, Safe Resume not approved: {self.gate_reason or "no permit"}')
+            return
         if result in ('ABORTED', 'CANCELED') and self.fault_context() \
                 and self.fault_resends < self.max_fault_resends:
             self.fault_resends += 1

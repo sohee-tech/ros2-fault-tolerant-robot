@@ -1,0 +1,5 @@
+# Web monitor runtime (installed into .venv_web by setup_web_monitor.sh; rclpy, Pillow come from the system)
+fastapi>=0.110,<1
+uvicorn>=0.27,<1
+websockets>=12,<16
+qrcode>=7.4,<9

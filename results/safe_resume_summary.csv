@@ -1,0 +1,16 @@
+test,moved_blocked_mm,blocked_s,distance_m,required_m,revoke_after_critical_s,approved_after_clear_s,moving_after_approved_s
+T0 startup order,,,,,,6.66,0.15
+T1 normal recovery,0.1,,,,,5.1,2.1
+T2 sensor not recovered,0.0,15.0,,,,5.2,0.12
+T3a pose dropped,0.1,,,,,3.02,0.11
+T3b invalid pose,0.0,,,,,5.14,0.2
+T3c high covariance,,,,,,3.2,2.12
+T3d covariance while driving,,,,,,3.16,0.12
+T4 obstacle,0.0,,0.191,0.295,,3.18,1.03
+T5 Nav2 recovery failed,0.0,,,,,9.66,0.16
+T6a Fault 3 latency,0.1,,,,-0.14,5.05,3.31
+T6b Fault 4 nav crash,0.0,,,,0.005,6.14,0.2
+T6c Fault 1 LiDAR,0.1,,,,-0.55,5.15,1.87
+T7 gate hung,0.0,,,,,3.97,0.13
+T8a odometry,0.0,,,,,5.03,0.12
+T8b control latency,0.0,,,,,5.09,0.2

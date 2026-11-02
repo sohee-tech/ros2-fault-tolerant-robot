@@ -15,6 +15,7 @@ Topic:
 import os
 import signal
 import subprocess
+import time
 
 import rclpy
 from lifecycle_msgs.msg import State, Transition
@@ -52,6 +53,7 @@ class Nav2FaultInjector(Node):
         self.create_service(Trigger, 'nav2_fault/recovery_block_disable', lambda q, r: self.set_block(False, r))
         self.block = False
         self.block_busy = False
+        self.t_busy = 0.0
         self.pub_block.publish(Bool(data=False))
         self.create_timer(0.1, self.enforce_block)
 
@@ -90,9 +92,13 @@ class Nav2FaultInjector(Node):
         return res
 
     def enforce_block(self):
-        if not self.block or self.block_busy or not self.get_ctrl.service_is_ready():
+        if not self.block or not self.get_ctrl.service_is_ready():
+            return
+        # a crashed server never answers the call in flight: do not wait for it forever
+        if self.block_busy and time.monotonic() - self.t_busy < 1.0:
             return
         self.block_busy = True
+        self.t_busy = time.monotonic()
         fut = self.get_ctrl.call_async(GetState.Request())
 
         def done(f):

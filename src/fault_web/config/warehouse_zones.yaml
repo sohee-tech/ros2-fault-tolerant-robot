@@ -1,0 +1,15 @@
+# Warehouse zones for the monitor, from tools/gen_amr_warehouse.py (Gazebo world = map frame, metres).
+# First matching rectangle wins, so the specific zones come first.
+zones:
+  - {name: 출발 구역,       x: [-0.8, 0.8],   y: [-4.9, -2.9]}
+  - {name: 배송 구역,       x: [-0.8, 0.8],   y: [3.1, 4.9]}
+  - {name: 충전 구역,       x: [-6.95, -5.2], y: [-0.95, 0.95]}
+  - {name: 중앙 교차로,     x: [-1.0, 1.0],   y: [-1.0, 1.0]}
+  - {name: 중앙 통로 북측,  x: [-1.0, 1.0],   y: [1.0, 5.0]}
+  - {name: 중앙 통로 남측,  x: [-1.0, 1.0],   y: [-5.0, -1.0]}
+  - {name: 동쪽 통로,       x: [1.0, 7.0],    y: [-1.0, 1.0]}
+  - {name: 서쪽 통로,       x: [-7.0, -1.0],  y: [-1.0, 1.0]}
+  - {name: 북동 보관 구역,  x: [1.0, 7.0],    y: [1.0, 5.0]}
+  - {name: 북서 보관 구역,  x: [-7.0, -1.0],  y: [1.0, 5.0]}
+  - {name: 남동 보관 구역,  x: [1.0, 7.0],    y: [-5.0, -1.0]}
+  - {name: 남서 보관 구역,  x: [-7.0, -1.0],  y: [-5.0, -1.0]}

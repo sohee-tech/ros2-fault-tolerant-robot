@@ -28,6 +28,7 @@ setup(
             'idle_stop = fault_monitor.idle_stop:main',
             'speed_limiter = fault_monitor.speed_limiter:main',
             'nav2_recovery_manager = fault_monitor.nav2_recovery_manager:main',
+            'safe_resume_gate = fault_monitor.safe_resume_gate:main',
         ],
     },
 )

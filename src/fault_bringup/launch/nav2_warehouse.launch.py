@@ -2,7 +2,7 @@
 
 Nav2 velocity output never goes straight to /cmd_vel:
   controller_server / behavior_server  cmd_vel -> /cmd_vel_nav_raw
-  -> control_delay_injector -> /cmd_vel_nav -> speed_limiter -> /cmd_vel_nav_limited
+  -> control_delay_injector -> /cmd_vel_nav -> speed_limiter (Safe Resume permit + limit) -> /cmd_vel_nav_limited
   -> twist_mux (safety 255 > nav 10 > idle_stop 1) -> /cmd_vel
 (nav2_bringup's navigation_launch.py is not used: it remaps the controller to /cmd_vel_nav and the
 velocity smoother / behavior server to /cmd_vel, which would collide with the fault system topics.)
@@ -13,7 +13,9 @@ Arguments:
   mission:=true|false    start nav2_mission_runner (waypoint mission, waits for /mission/start)
   autostart_mission:=true|false  run the mission as soon as Nav2 is active
   mission_config:=<file in config/>  waypoint list (default nav2_mission.yaml)
-Also started: nav2_recovery_manager (lifecycle watchdog + automatic recovery) and
+  safe_resume_gate:=true|false  start the gate. The permit check is always on: without a gate the robot
+                         cannot move (false = test of startup order, the test starts the gate later).
+Also started: safe_resume_gate, localization_fault_injector, nav2_recovery_manager (lifecycle watchdog + automatic recovery) and
 nav2_fault_injector (test services /nav2_fault/*).
 """
 import os
@@ -45,17 +47,24 @@ def generate_launch_description():
         DeclareLaunchArgument('mission', default_value='true'),
         DeclareLaunchArgument('autostart_mission', default_value='false'),
         DeclareLaunchArgument('mission_config', default_value='nav2_mission.yaml'),
+        DeclareLaunchArgument('safe_resume_gate', default_value='true'),
 
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(os.path.join(share, 'launch', 'fault_sim.launch.py')),
             launch_arguments={'world': 'warehouse', 'demo': 'false',
                               'gui': LaunchConfiguration('gui'),
-                              'dashboard': LaunchConfiguration('dashboard')}.items()),
+                              'dashboard': LaunchConfiguration('dashboard'),
+                              'safe_resume': 'true'}.items()),
 
         # --- localization ---
         Node(package='nav2_map_server', executable='map_server', name='map_server', output='screen',
              parameters=[params, {'yaml_filename': map_yaml}]),
-        Node(package='nav2_amcl', executable='amcl', name='amcl', output='screen', parameters=[params]),
+        # warn: safe_resume_gate calls request_nomotion_update every 2 s while the robot rests (AMCL is silent at rest),
+        # and AMCL logs an INFO line for each call. Behaviour is unchanged, warnings and errors are still shown.
+        Node(package='nav2_amcl', executable='amcl', name='amcl', output='screen', parameters=[params],
+             remappings=[('amcl_pose', 'amcl_pose_raw')], arguments=['--ros-args', '--log-level', 'amcl:=warn']),
+        Node(package='fault_injector', executable='localization_fault_injector', output='screen',
+             parameters=[{'use_sim_time': True}]),
         Node(package='nav2_lifecycle_manager', executable='lifecycle_manager',
              name='lifecycle_manager_localization', output='screen',
              parameters=[{'use_sim_time': True, 'autostart': True, 'node_names': ['map_server', 'amcl']}]),
@@ -87,11 +96,18 @@ def generate_launch_description():
              parameters=[os.path.join(share, 'config', 'nav2_recovery.yaml')]),
         Node(package='fault_injector', executable='nav2_fault_injector', output='screen'),
 
+        # --- Safe Resume Gate ---
+        Node(package='fault_monitor', executable='safe_resume_gate', output='screen',
+             condition=IfCondition(LaunchConfiguration('safe_resume_gate')),
+             parameters=[os.path.join(share, 'config', 'safe_resume.yaml')],
+             respawn=True, respawn_delay=1.0),
+
         # --- waypoint mission ---
         Node(package='fault_bringup', executable='nav2_mission_runner', output='screen',
              condition=IfCondition(LaunchConfiguration('mission')),
              parameters=[PathJoinSubstitution([share, 'config', LaunchConfiguration('mission_config')]),
                          {'layout_file': os.path.join(share, 'config', 'amr_warehouse_layout.yaml'),
+                          'require_safe_resume': True,
                           'autostart': ParameterValue(LaunchConfiguration('autostart_mission'),
                                                       value_type=bool)}]),
     ])

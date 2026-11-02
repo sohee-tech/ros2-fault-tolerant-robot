@@ -40,3 +40,9 @@ results/*
 !results/nav2_summary.json
 !results/nav2_recovery_summary.csv
 !results/nav2_recovery_summary.json
+!results/safe_resume_summary.csv
+!results/safe_resume_summary.json
+!results/web_monitor_summary.json
+
+# Web monitor virtualenv (setup_web_monitor.sh)
+.venv_web/

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8"><title>AMR 모니터 QR</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+html{background:#111}body{margin:0;font-family:"Noto Sans CJK KR","Malgun Gothic",sans-serif;background:#111;color:#eee;padding:18px}
+h1{margin:0 0 10px;font-size:1.8rem;text-align:center}
+.wrap{display:flex;flex-wrap:wrap;gap:20px;justify-content:center;align-items:flex-start}
+.left{text-align:center}.box{display:inline-block;background:#fff;padding:8px;border-radius:12px}
+#qr{display:block;width:min(62vh,88vw);height:auto;image-rendering:pixelated}
+#url{font:bold 1.5rem monospace;color:#8fd3ff;word-break:break-all;margin-top:8px}
+.right{flex:1 1 420px;max-width:620px}.card{background:#222;border-radius:12px;padding:12px 14px;margin-bottom:12px}
+.card h2{margin:0 0 6px;font-size:1.05rem}.card p,.card li{margin:4px 0;color:#d5d5d5;line-height:1.45}ol{padding-left:20px;margin:4px 0}
+.ok{background:#14572c}.wait{background:#17457a}.bad{background:#7d1b1f}.none{background:#5c4708}.warn{background:#5c4708}
+.alt{display:inline-block;margin:8px;color:#ccc;text-align:center}.alt img{width:130px;background:#fff;padding:5px;border-radius:6px}
+.err{color:#ff6b6b;font-size:1.4rem}small{color:#aaa}
+table{width:100%;border-collapse:collapse;font-size:.92rem}td,th{padding:3px 6px;text-align:left;border-top:1px solid #444}
+</style></head><body>
+<h1>AMR-01 실시간 모니터</h1>
+<div class="wrap">
+  <div class="left"><div id="main"></div><div id="alts"></div></div>
+  <div class="right">
+    <div class="card" id="netcard"><h2>현재 네트워크</h2><p id="netname">확인 중</p></div>
+    <div class="card warn hidden" id="warn" style="display:none"><h2>⚠ 기기 간 통신이 막혀 있을 수 있는 네트워크입니다</h2>
+      <p>학교·기업용 Wi-Fi(802.1X)에서는 휴대폰이 이 PC에 접속하지 못하는 경우가 많습니다. 아래 접속 진단에 기록이 남지 않으면 핫스팟을 사용하세요.</p></div>
+    <div class="card none" id="diag"><h2 id="diag-title">접속 진단</h2><p id="diag-text"></p><table id="devices"></table></div>
+    <div class="card"><h2>휴대폰 핫스팟으로 접속하기</h2><ol>
+      <li>휴대폰에서 핫스팟을 켭니다. 휴대폰 데이터가 사용됩니다.</li>
+      <li>이 PC의 Wi-Fi를 그 핫스팟에 연결합니다.</li>
+      <li>이 화면의 주소와 QR코드가 수 초 안에 자동으로 바뀝니다. 서버를 다시 실행할 필요가 없습니다.</li>
+      <li>그 휴대폰으로 새 QR코드를 스캔합니다.</li></ol>
+      <p><small>다른 휴대폰도 같은 핫스팟에 연결하면 함께 접속할 수 있습니다.</small></p></div>
+    <div class="card"><h2>접속이 안 될 때 확인</h2><ol>
+      <li>휴대폰이 LTE/5G가 아니라 위 네트워크와 같은 Wi-Fi에 연결되어 있는지</li>
+      <li>QR 앱 내장 브라우저 대신 Chrome 또는 Safari에 주소를 직접 입력했는지</li>
+      <li>주소가 https가 아닌 http로 시작하는지</li>
+      <li>휴대폰의 VPN, 비공개 릴레이, 데이터 절약 모드가 꺼져 있는지</li></ol></div>
+  </div>
+</div>
+<script>
+let last=null;
+const set=(id,t)=>{document.getElementById(id).textContent=t;};
+const clock=t=>t?new Date(t*1000).toLocaleTimeString('ko-KR',{hour12:false}):'-';
+function draw(net){
+  const key=JSON.stringify(net.urls);if(key===last)return;last=key;
+  const main=document.getElementById('main'),alts=document.getElementById('alts');main.textContent='';alts.textContent='';
+  if(!net.ok){const e=document.createElement('div');e.className='err';e.id='nonet';e.textContent='연결된 네트워크가 없습니다. Wi-Fi 또는 핫스팟에 연결하세요.';main.append(e);return;}
+  const box=document.createElement('div');box.className='box';const img=new Image();img.id='qr';img.alt='QR';img.src='/qr.png?i=0&t='+Date.now();box.append(img);
+  const u=document.createElement('div');u.id='url';u.textContent=net.url;main.append(box,u);
+  net.urls.slice(1).forEach((url,n)=>{const a=document.createElement('div');a.className='alt';const i=new Image();i.src=`/qr.png?i=${n+1}&t=`+Date.now();const t=document.createElement('div');t.textContent=url;a.append(i,t);alts.append(a);});
+}
+async function refresh(){
+  try{
+    const net=await (await fetch('/api/network',{cache:'no-store'})).json();
+    draw(net);
+    const h=(net.hosts||[])[0];
+    set('netname',h?`${h.name||'이름 확인 불가'} (${h.iface||'-'}, ${h.ip})`:'연결된 네트워크 없음');
+    document.getElementById('warn').style.display=h&&h.enterprise?'block':'none';
+    const v=net.visits,d=v.diagnosis;document.getElementById('diag').className='card '+d.level;set('diag-title','접속 진단: '+d.title);set('diag-text',d.text);
+    const tb=document.getElementById('devices');tb.textContent='';
+    if(v.devices.length){const r=tb.insertRow();['기기','페이지 요청','JS 실행','실시간 연결'].forEach(x=>{const c=document.createElement('th');c.textContent=x;r.append(c);});
+      v.devices.forEach(x=>{const row=tb.insertRow();[x.ip,clock(x.page),clock(x.js),x.ws_open>0?'연결 중':clock(x.ws)].forEach(c=>{row.insertCell().textContent=c;});});}
+  }catch(e){last=null;document.getElementById('main').textContent='웹 서버 연결 끊김';}
+}
+refresh();setInterval(refresh,2000);
+</script></body></html>

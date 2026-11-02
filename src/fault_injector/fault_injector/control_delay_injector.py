@@ -10,6 +10,9 @@ Stale-command policy: when the delay is disabled, every queued (old) command is
 dropped, so nothing bursts out; the next fresh command passes immediately. The
 queue is also bounded (`max_queue`, oldest dropped first).
 
+Probe (probe_rate > 0, Nav2 system): a marker goes through the same delay queue so that latency is still
+measured while no commands are flowing (robot stopped). It publishes a latency sample only, no command.
+
 Services (std_srvs/Trigger):
   /control_delay/degraded  delay = degraded_delay_sec (default 0.30 s)
   /control_delay/critical  delay = critical_delay_sec (default 0.70 s)
@@ -42,6 +45,7 @@ class ControlDelayInjector(Node):
                        'CRITICAL': p('critical_delay_sec', 0.70)}
         self.queue = deque(maxlen=p('max_queue', 50))   # (receive_monotonic, Twist)
         release_rate = p('release_rate', 200.0)
+        probe_rate = p('probe_rate', 0.0)
 
         self.mode = 'NONE'
         self.delay = 0.0
@@ -60,6 +64,8 @@ class ControlDelayInjector(Node):
         self.create_service(Trigger, 'control_delay/disable', lambda req, res: self.on_mode('NONE', res))
 
         self.create_timer(1.0 / release_rate, self.release)
+        if probe_rate > 0.0:
+            self.create_timer(1.0 / probe_rate, lambda: self.on_cmd(None))
         self.publish_mode()
         self.get_logger().info(
             f'Relaying /{in_topic} -> /{out_topic} (degraded {self.delays["DEGRADED"]:.2f} s, '
@@ -79,7 +85,8 @@ class ControlDelayInjector(Node):
             self.forward(msg, recv)
 
     def forward(self, msg, recv):
-        self.pub_cmd.publish(msg)
+        if msg is not None:   # None = latency probe
+            self.pub_cmd.publish(msg)
         self.pub_latency.publish(Float64(data=time.monotonic() - recv))
 
     def on_mode(self, mode, res):

@@ -54,7 +54,14 @@ BUTTONS = [
                                 ('Controller crash', 'nav2_fault/controller_crash'),
                                 ('Block recovery', 'nav2_fault/recovery_block_enable'),
                                 ('Unblock', 'nav2_fault/recovery_block_disable')]),
+    ('Localization', 'loc', [('Drop pose', 'localization_fault/drop'),
+                             ('Invalid cov.', 'localization_fault/invalid'),
+                             ('Disable', 'localization_fault/disable')]),
 ]
+RESUME_COLORS = {'APPROVED': COLORS['NORMAL'], 'VERIFYING': COLORS['WARNING'], 'WAITING': COLORS['DEGRADED'],
+                 'BLOCKED': COLORS['CRITICAL'], None: COLORS[None]}
+RESUME_CHECKS = [('lidar', 'LiDAR'), ('odom', 'Odom'), ('nav2', 'Nav2'), ('localization', 'Pose'),
+                 ('obstacle', 'Obstacle'), ('control', 'Control')]
 
 
 class DashboardNode(Node):
@@ -70,6 +77,7 @@ class DashboardNode(Node):
                   'latency': None, 'restarts': 0, 'pid': None, 'limit': 0.0,
                   'lidar_fault': False, 'odom_fault': False, 'delay_mode': 'NONE', 'crash_loop': False,
                   'phase': '', 'mission': None, 'drive_requested': False, 'nav2_block': False,
+                  'loc_mode': 'NONE', 'resume': None,
                   'nav2': None, 'nav2_stack': None}   # nav2 = health state, nav2_stack = recovery manager JSON
         self.t = {}   # topic -> monotonic time of last message
         self.last = {'nav_x': None, 'out_x': None}
@@ -103,6 +111,10 @@ class DashboardNode(Node):
                                  lambda m: self.flag('nav2_block', m.data, 'Nav2 recovery block'), latched)
         self.create_subscription(String, 'nav2_recovery/event', lambda m: self.event(f'[nav2] {m.data}'), 10)
         self.create_subscription(String, 'mission/event', lambda m: self.event(f'[mission] {m.data}'), 10)
+        self.create_subscription(String, 'safe_resume/status', self.on_resume, 10)
+        self.create_subscription(String, 'safe_resume/event', lambda m: self.event(f'[resume] {m.data}'), 10)
+        self.create_subscription(String, 'localization_fault/mode',
+                                 lambda m: self.v.__setitem__('loc_mode', m.data), latched)
         self.create_subscription(Bool, 'nav_source/active_request',
                                  lambda m: self.v.__setitem__('drive_requested', m.data), latched)
         self.clients_ = {}
@@ -162,6 +174,12 @@ class DashboardNode(Node):
     def on_nav2_nodes(self, msg):
         try:
             self.put('nav2_stack', json.loads(msg.data))
+        except ValueError:
+            pass
+
+    def on_resume(self, msg):
+        try:
+            self.put('resume', json.loads(msg.data))
         except ValueError:
             pass
 
@@ -252,6 +270,16 @@ class Dashboard:
         self.mission_detail = tk.Label(mission, text='', font=mono, bg='#2a2a2a', fg='#dddddd', anchor='w')
         self.mission_detail.grid(row=1, column=1, sticky='w')
 
+        resume = tk.Frame(self.root, bg='#2a2a2a', padx=10, pady=4)
+        resume.pack(fill='x', padx=10, pady=(0, 8))
+        self.resume_state = tk.Label(resume, text='SAFE RESUME: --', font=mid, bg=COLORS[None], fg='white', padx=8)
+        self.resume_state.pack(anchor='w')
+        self.resume_checks = tk.Label(resume, text='', font=mono, bg='#2a2a2a', fg=fg, anchor='w')
+        self.resume_checks.pack(anchor='w')
+        self.resume_reason = tk.Label(resume, text='', font=mono, bg='#2a2a2a', fg='#ffb347', anchor='w',
+                                      justify='left', wraplength=1180)
+        self.resume_reason.pack(anchor='w')
+
         controls = tk.Frame(self.root, bg=bg)
         controls.pack(fill='x', padx=10)
         self.fault_labels = {}
@@ -327,12 +355,33 @@ class Dashboard:
             'fault_labels': {k: w.cget('text') for k, w in self.fault_labels.items()},
             'nav_mode': self.nav_mode.cget('text'),
             'mission': [self.mission_line.cget('text'), self.mission_detail.cget('text')],
+            'safe_resume': {'state': widget(self.resume_state), 'checks': self.resume_checks.cget('text'),
+                            'reason': self.resume_reason.cget('text')},
             'event_log': self.log.get('1.0', 'end').strip().splitlines()[-20:],
         }
         path = os.path.expanduser('~/capstone_fault_ws/logs/dashboard_snapshot.json')
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, 'w') as fp:
             json.dump(data, fp, indent=1, ensure_ascii=False)
+
+    def update_resume(self, r):
+        """No fresh status = gate unknown: never shown as approved."""
+        if not r:
+            self.resume_state.configure(text='SAFE RESUME: -- (no gate status)  MOTION DENIED', bg=RESUME_COLORS[None],
+                                        fg='white')
+            self.resume_checks.configure(text='')
+            self.resume_reason.configure(text='')
+            return
+        extra = {'APPROVED': 'MOTION ALLOWED', 'VERIFYING': f'{r["verify_elapsed_s"] or 0:.1f}/{r["stable_time_s"]:.1f} s'}
+        self.resume_state.configure(text=f'SAFE RESUME: {r["state"]}  {extra.get(r["state"], "MOTION DENIED")}',
+                                    bg=RESUME_COLORS.get(r['state'], COLORS[None]),
+                                    fg='black' if r['state'] == 'VERIFYING' else 'white')
+        checks = r['checks']
+        dist, need = r['obstacle_distance_m'], r['required_clearance_m']
+        self.resume_checks.configure(
+            text='   '.join(f'{label} {"OK" if checks.get(key, {}).get("ok") else "NG"}' for key, label in RESUME_CHECKS)
+                 + f'   clearance {"inf" if dist is None else "%.2f" % dist}/{"--" if need is None else "%.2f" % need} m')
+        self.resume_reason.configure(text=f'reason: {r["reason"]}' if r['reason'] else '')
 
     def update_view(self):
         n, v = self.node, self.node.v
@@ -393,6 +442,8 @@ class Dashboard:
                                         fg='#eeeeee')
             self.mission_detail.configure(text='no Nav2 mission (constant-velocity test source)')
 
+        self.update_resume(n.fresh('resume'))
+        self.fault_labels['loc'].configure(text='fault: ' + v['loc_mode'])
         self.fault_labels['lidar'].configure(text='fault: ' + ('ON' if v['lidar_fault'] else 'off'))
         self.fault_labels['odom'].configure(text='fault: ' + ('ON' if v['odom_fault'] else 'off'))
         self.fault_labels['control'].configure(text='delay: ' + v['delay_mode'])

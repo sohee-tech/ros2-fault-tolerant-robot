@@ -23,6 +23,7 @@ import numpy as np
 import rclpy
 from lifecycle_msgs.srv import GetState
 from nav_msgs.msg import Odometry
+from rclpy.node import NodeNameNonExistentError
 from rclpy.qos import QoSProfile, DurabilityPolicy
 from std_msgs.msg import String, UInt64
 from std_srvs.srv import Trigger
@@ -66,11 +67,14 @@ class Nav2RecoveryTest(Nav2Demo):
     def lifecycle(self, node):
         """Lifecycle state read directly from the node (None = service gone / no answer)."""
         cli = self.getstate[node]
-        if not cli.service_is_ready():
-            return None
-        fut = cli.call_async(GetState.Request())
-        self.wait_until(fut.done, 1.0)
-        return LABELS.get(fut.result().current_state.id) if fut.done() and fut.result() else None
+        for _ in range(3):      # a server busy with its transition may answer late: no answer is not a state
+            if not cli.service_is_ready():
+                return None
+            fut = cli.call_async(GetState.Request())
+            self.wait_until(fut.done, 1.0)
+            if fut.done() and fut.result():
+                return LABELS.get(fut.result().current_state.id)
+        return None
 
     def stack_active(self):
         return self.nav2.get('nodes') and all(v['state'] == 'ACTIVE' for v in self.nav2['nodes'].values())
@@ -165,7 +169,16 @@ class Nav2RecoveryTest(Nav2Demo):
         if not self.check('A: Nav2 stack ACTIVE, runner ready', ok,
                           f'({ {k: v["state"] for k, v in self.nav2.get("nodes", {}).items()} })'):
             return False
-        subs = [t for t, _ in self.get_subscriber_names_and_types_by_node('controller_server', '/')]
+        subs = []
+
+        def read_subs():    # the ROS graph may still be discovering the node
+            try:
+                subs[:] = [t for t, _ in self.get_subscriber_names_and_types_by_node('controller_server', '/')]
+            except NodeNameNonExistentError:
+                pass
+            return subs
+
+        self.wait_until(read_subs, 10.0)
         self.check('A: controller_server velocity feedback = /odom_validated',
                    '/odom_validated' in subs and '/odom' not in subs, f'(odom topics {[t for t in subs if "odom" in t]})')
         t_start = self.svc('mission/start')

@@ -1,0 +1,4 @@
+# Integration test only (real browser through the snap geckodriver)
+selenium>=4.15,<5
+zxing-cpp>=2.2,<3
+playwright>=1.48,<2

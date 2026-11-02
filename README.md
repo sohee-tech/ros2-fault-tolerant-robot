@@ -22,11 +22,11 @@
 | **Recovery and mission continuity** | Existing Nav2 recovery and waypoint runner resume the interrupted delivery when authorized. |
 | **Operator monitoring** | LAN QR code → responsive mobile dashboard, live WebSocket updates, diagnosed fault status, location, recovery progress, alert history, and Safe Resume reason. |
 | **Read-only safety separation** | The web service does not publish robot motion commands or invoke recovery services. |
-| **Observed tests** | Safe Resume integration: 176/176 checks passed in the reported test run; Nav2 recovery: 42/42 checks passed in the reported final run; real phone connected over home Wi-Fi and displayed normal state plus mission completion. |
+| **Observed tests** | Safe Resume integration 176/176 and web monitor 75/75 in the latest runs; a real phone over home Wi-Fi displayed the normal state and mission completion. Details and intermittent results: [Automated verification](#automated-verification). |
 
-**Demo (once the locally implemented web package is committed):** `./run_web_demo.sh` starts the robot simulation and mobile monitoring; `./run_web_monitor.sh` connects the read-only monitor to a running robot. The phone must be able to reach the laptop on the same LAN. Some campus Wi-Fi networks isolate clients; use a permitted hotspot/router in that case. QR codes contain a network-local address, not a globally accessible service.
+**Demo:** `./setup_web_monitor.sh` once, then `./run_web_demo.sh` (see [Run the project](#run-the-project)). The phone must reach the laptop on the same LAN. Some campus Wi-Fi networks isolate clients; use a permitted hotspot or router in that case. QR codes contain a network-local address, not a globally accessible service.
 
-**Known limitations to resolve before final review:** occasional waypoint goal-position error above 0.25 m; AMCL covariance threshold / no-motion-update false-stop behavior; forward-only obstacle clearance (reverse and in-place rotation not yet evaluated). A successful unit/integration test is **not** a functional-safety certification. At the time of this README update, the Safe Resume and web-monitor source changes are still in the local worktree pending a separate code push.
+A successful unit or integration test is **not** a functional-safety certification. Open issues are listed under [Known limitations](#known-limitations).
 
 ---
 
@@ -63,7 +63,8 @@ The current system runs a real Nav2 waypoint mission in a warehouse simulation w
 | Faults | LiDAR dropout, odometry anomaly, control latency, navigation-process failure |
 | Response | Warning, sample rejection, speed degradation, independent safe stop, recovery |
 | Safety arbitration | `twist_mux` with independent high-priority safety command |
-| Monitoring | tkinter dashboard + CSV / JSON result logging |
+| Restart safety | Safe Resume Gate: fail-closed permit in the Nav2 command path |
+| Monitoring | tkinter dashboard, read-only QR mobile web monitor (FastAPI + WebSocket), CSV / JSON result logging |
 | Verification | Automated fault, regression, integrated-demo, and Nav2 mission tests |
 
 ---
@@ -97,6 +98,17 @@ flowchart LR
 
     HM -->|DEGRADED: speed limit| SL
     HM -->|CRITICAL: zero velocity| SAFE
+
+    HM --> GATE[Safe Resume Gate]
+    SCAN --> GATE
+    AMCL[AMCL pose] --> GATE
+    REC[Nav2 Recovery Manager] --> GATE
+    GATE -->|permit, expires by itself| SL
+    GATE -->|approved| MR[Mission Runner]
+
+    HM -.->|subscribe only| WEB[Web Monitor]
+    GATE -.->|subscribe only| WEB
+    WEB -->|WebSocket, LAN| PHONE[Phone browser]
 ```
 
 A key design rule is that **normal navigation never owns the final robot command directly**.  
@@ -237,7 +249,7 @@ Implausible odometry samples are therefore rejected before they are used as Nav2
 
 ### Recovery verification
 
-The automated Nav2 recovery test passed **42/42 checks in three consecutive runs**.
+Before the Safe Resume Gate was added, the automated Nav2 recovery test passed **42/42 checks in three consecutive runs**. Current results are under [Automated verification](#automated-verification).
 
 Representative results:
 
@@ -256,6 +268,40 @@ Selected results:
 
 - `results/nav2_recovery_summary.csv`
 - `results/nav2_recovery_summary.json`
+
+## Safe Resume Gate
+
+`/health/state` returning to NORMAL is not enough to move again. `fault_monitor/safe_resume_gate.py` re-checks every condition and grants a permit only after all of them have held for **3 s**.
+
+| Condition | Required for approval |
+|---|---|
+| LiDAR | Fresh scan, rate, usable rays, health NORMAL |
+| Odometry | Health NORMAL, fresh validated odometry, no recent rejected sample |
+| Nav2 | All monitored servers ACTIVE, recovery manager IDLE |
+| Localization | Fresh `/amcl_pose`, `map` frame, covariance within limits |
+| Forward clearance | Free distance >= speed x (reaction + latency) + braking + margin + robot radius |
+| Control | Fresh latency sample, <= 100 ms |
+| System | `health_monitor` alive, state NORMAL |
+
+States: `WAITING`, `VERIFYING`, `APPROVED`, `BLOCKED`. Thresholds are in `src/fault_bringup/config/safe_resume.yaml`.
+
+- **Fail-closed:** `speed_limiter` forwards Nav2 commands only while a true permit is fresher than 0.5 s. If the gate is missing, crashed or hung, the Nav2 channel closes by itself.
+- **Single stop path:** `/cmd_vel_safety` remains published only by `health_monitor`; the gate never publishes velocity.
+- **Mission:** the waypoint runner stays PAUSED while denied and resumes the same waypoint when approved.
+- **After approval:** CRITICAL, stale or invalid data, or insufficient clearance revoke the permit at once. WARNING and DEGRADED stay with the existing speed limit and do not revoke it.
+
+---
+
+## QR mobile monitoring
+
+`src/fault_web` is a separate, read-only process: it publishes nothing to the robot and calls no robot service, so stopping it does not affect fault handling.
+
+- **Alerts:** one alert per fault episode, immediately on CRITICAL, with robot ID, time, cause, state, location, stop status, recovery stage, Safe Resume status and whether an operator is needed.
+- **Causes:** only what diagnostics show, for example "LiDAR data reception stopped", never an unproven hardware claim.
+- **Old data is never shown as current:** no diagnostic data gives UNKNOWN, an invalid pose is shown as the last confirmed position with its time, and a lost connection is marked on the page while it reconnects.
+- **QR page:** shows the detected LAN address, updates when the network changes, and reports how far each phone got (page request, JavaScript, WebSocket) to separate network problems from browser problems.
+
+---
 
 ## Dashboard
 
@@ -318,8 +364,28 @@ The warehouse world and 2D occupancy map are generated from the same obstacle ge
 | Fault 4 — Navigation process | **36 / 36 PASS** |
 | Integrated fault demo | **25 / 25 PASS** |
 | Nav2 warehouse fault demo | **25 / 25 PASS** |
+| Nav2 lifecycle recovery | **42 / 42 PASS** in the latest run, intermittent (below) |
+| Safe Resume Gate (T0-T8) | **176 / 176 PASS** in the latest run, intermittent (below) |
+| Web monitor with Gazebo faults and real browsers | **75 / 75 PASS** |
+| Unit tests (`fault_monitor`, `fault_web`) | **27 / 27 PASS** |
 
-The integrated demo and Nav2 demo have also been repeated successfully in GUI runs, while the original regression suites remain passing.
+The first six suites were run once on the Safe Resume code. While a request is denied, the Safe Resume test also publishes 0.2 m/s on Nav2's output topic and requires final `/cmd_vel` = 0 and no ground-truth motion (at most 0.1 mm measured).
+
+**Intermittent:** the check "goal position error < 0.25 m" does not pass in every run, and when it fails that suite fails.
+
+| Code / test | Measured error | Runs failing the check |
+|---|---|---:|
+| Before Safe Resume, recovery test | 0.119 - 0.256 m | 1 of 6 |
+| Current, recovery test | 0.216 - 0.284 m | 2 of 4 |
+| Current, Safe Resume test | 0.136 - 0.334 m | 1 of 3 |
+
+The cause is not confirmed, and the samples are too few to rule out an effect of the gate. The threshold was not relaxed.
+
+The web monitor suite was last run before the later mobile-page changes (device diagnostics, connection-error messages); those changes were checked only with the unit tests and the emulated mobile browser check below.
+
+**Checked by hand, no automated suite in this repository:** a real phone on home Wi-Fi (normal state and mission completion), mobile page behaviour in emulated mobile Chromium, and shutdown with one Ctrl+C.
+
+**Not verified:** Safari / iOS, phone access during fault scenarios (faults were verified in desktop headless browsers), and phone access on campus Wi-Fi.
 
 ---
 
@@ -344,6 +410,16 @@ cd ~/capstone_fault_ws
 colcon build --symlink-install
 source env.sh
 ```
+
+### Mobile monitoring demo
+
+```bash
+./setup_web_monitor.sh    # once: creates .venv_web, system Python is not changed
+./run_web_demo.sh         # Gazebo + Nav2 + dashboard + mission + web monitor + QR page; Ctrl+C stops everything
+./run_web_monitor.sh      # or attach only the monitor to a running system
+```
+
+Scan the QR code shown on the PC with a phone on the same network. Faults are injected with the dashboard buttons. Hotspot and troubleshooting notes: `src/fault_web/README.md`.
 
 ### Warehouse + Nav2 + dashboard
 
@@ -372,6 +448,9 @@ This runs the warehouse waypoint mission while automatically injecting Fault 1 /
 ./run_fault2_test.sh
 ./run_fault3_test.sh
 ./run_fault4_test.sh
+./run_nav2_recovery_test.sh
+./run_safe_resume_test.sh
+./run_web_monitor_test.sh    # first: ./setup_web_monitor.sh --test
 ```
 
 ---
@@ -382,12 +461,15 @@ This runs the warehouse waypoint mission while automatically injecting Fault 1 /
 .
 ├── src/
 │   ├── fault_injector/      # LiDAR, odometry, control-delay, navigation fault injection
-│   ├── fault_monitor/       # health monitoring, speed limiting, idle stop
-│   └── fault_bringup/       # launch, dashboard, Nav2 mission, maps, worlds, configs
+│   ├── fault_monitor/       # health monitoring, speed limiting, idle stop, Nav2 recovery, Safe Resume Gate
+│   ├── fault_bringup/       # launch, dashboard, Nav2 mission, maps, worlds, configs
+│   └── fault_web/           # read-only alerts, FastAPI + WebSocket server, mobile page, QR code
 ├── docs/images/             # presentation / portfolio images
 ├── results/                 # selected quantitative summaries
 ├── run_nav2.sh
 ├── run_nav2_demo.sh
+├── run_web_demo.sh
+├── run_web_monitor.sh
 ├── run_warehouse_demo.sh
 ├── run_integrated_demo.sh
 └── run_fault*_test.sh
@@ -410,17 +492,28 @@ This runs the warehouse waypoint mission while automatically injecting Fault 1 /
 - [x] Nav2 4-waypoint autonomous mission
 - [x] Fault 1 / 2 / 3 response during active Nav2 navigation
 - [x] Automated regression and quantitative summaries
-
-### In progress
-
 - [x] Nav2 lifecycle-node failure detection and automatic recovery
-- [x] Feed validated odometry into the relevant Nav2 velocity-feedback path
+- [x] Validated odometry in the Nav2 velocity-feedback path
+- [x] Safe Resume Gate with fail-closed motion permit
+- [x] Administrator alerts and read-only QR mobile monitor
 
 ### Planned
 
 - [ ] Scenario manager for reproducible multi-fault experiments
 - [ ] Expanded quantitative evaluation
 - [ ] Optional real-robot deployment
+
+---
+
+## Known limitations
+
+- **Goal-position error:** intermittently above 0.25 m, cause not confirmed (see [Automated verification](#automated-verification)).
+- **AMCL covariance limits:** approval 0.25 m², stay-approved 1.0 m². The first limit of 0.10 m² stopped a fault-free mission 21 times, so the limits were set from measured fault-free runs (maximum about 0.73 m²). One run still exceeded 1.0 m² and paused for about 20 s before resuming by itself.
+- **Forward-only clearance:** reverse motion and in-place rotation are not checked.
+- **After approval:** implausible odometry and 100-500 ms control latency keep the permit and use the existing 0.10 m/s limit.
+- **No-motion AMCL updates:** requested every 2 s at rest because AMCL does not publish otherwise. Long stops were not evaluated separately.
+- **Web monitor access:** no password; anyone on the same network can view it, but nothing can be controlled. Browser-closed push notifications and remote recovery commands are not implemented.
+- **Unexplained once:** an orphaned `gzserver` was found once during shutdown testing and did not reproduce in later runs. If it appears, the start script refuses to run and reports it instead of killing it.
 
 ---
 

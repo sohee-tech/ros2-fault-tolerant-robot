@@ -1,0 +1,126 @@
+{
+  "generated": "2026-11-02T21:31:32",
+  "world": "amr_warehouse",
+  "test_passed": true,
+  "checks_passed": 176,
+  "checks_total": 176,
+  "failed_checks": [],
+  "groups": {
+    "T0": "12/12",
+    "T1": "13/13",
+    "T2": "15/15",
+    "T3": "35/35",
+    "T4": "17/17",
+    "T5": "14/14",
+    "T6": "36/36",
+    "T7": "6/6",
+    "T8": "24/24",
+    "mission": "4/4"
+  },
+  "time_base": "sim time; motion from Gazebo /odom_raw",
+  "results": {
+    "mission_success": true,
+    "mission_time_s": 386.5,
+    "waypoints_reached": 5,
+    "pauses": 14,
+    "retries": 0,
+    "fault_resends": 0,
+    "goal_position_error_m": 0.136,
+    "min_clearance_m": 0.385,
+    "tests": [
+      {
+        "test": "T0 startup order",
+        "approved_after_clear_s": 6.66,
+        "moving_after_approved_s": 0.15
+      },
+      {
+        "test": "T1 normal recovery",
+        "moved_blocked_mm": 0.1,
+        "approved_after_clear_s": 5.1,
+        "moving_after_approved_s": 2.1
+      },
+      {
+        "test": "T2 sensor not recovered",
+        "moved_blocked_mm": 0.0,
+        "blocked_s": 15.0,
+        "approved_after_clear_s": 5.2,
+        "moving_after_approved_s": 0.12
+      },
+      {
+        "test": "T3a pose dropped",
+        "moved_blocked_mm": 0.1,
+        "approved_after_clear_s": 3.02,
+        "moving_after_approved_s": 0.11
+      },
+      {
+        "test": "T3b invalid pose",
+        "moved_blocked_mm": 0.0,
+        "approved_after_clear_s": 5.14,
+        "moving_after_approved_s": 0.2
+      },
+      {
+        "test": "T3c high covariance",
+        "approved_after_clear_s": 3.2,
+        "moving_after_approved_s": 2.12
+      },
+      {
+        "test": "T3d covariance while driving",
+        "approved_after_clear_s": 3.16,
+        "moving_after_approved_s": 0.12
+      },
+      {
+        "test": "T4 obstacle",
+        "moved_blocked_mm": 0.0,
+        "distance_m": 0.191,
+        "required_m": 0.295,
+        "approved_after_clear_s": 3.18,
+        "moving_after_approved_s": 1.03
+      },
+      {
+        "test": "T5 Nav2 recovery failed",
+        "moved_blocked_mm": 0.0,
+        "approved_after_clear_s": 9.66,
+        "moving_after_approved_s": 0.16
+      },
+      {
+        "test": "T6a Fault 3 latency",
+        "revoke_after_critical_s": -0.14,
+        "moved_blocked_mm": 0.1,
+        "approved_after_clear_s": 5.05,
+        "moving_after_approved_s": 3.31
+      },
+      {
+        "test": "T6b Fault 4 nav crash",
+        "revoke_after_critical_s": 0.005,
+        "moved_blocked_mm": 0.0,
+        "approved_after_clear_s": 6.14,
+        "moving_after_approved_s": 0.2
+      },
+      {
+        "test": "T6c Fault 1 LiDAR",
+        "revoke_after_critical_s": -0.55,
+        "moved_blocked_mm": 0.1,
+        "approved_after_clear_s": 5.15,
+        "moving_after_approved_s": 1.87
+      },
+      {
+        "test": "T7 gate hung",
+        "moved_blocked_mm": 0.0,
+        "approved_after_clear_s": 3.97,
+        "moving_after_approved_s": 0.13
+      },
+      {
+        "test": "T8a odometry",
+        "moved_blocked_mm": 0.0,
+        "approved_after_clear_s": 5.03,
+        "moving_after_approved_s": 0.12
+      },
+      {
+        "test": "T8b control latency",
+        "moved_blocked_mm": 0.0,
+        "approved_after_clear_s": 5.09,
+        "moving_after_approved_s": 0.2
+      }
+    ]
+  }
+}

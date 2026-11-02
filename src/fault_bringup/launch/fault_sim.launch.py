@@ -11,6 +11,8 @@ Arguments:
   dashboard:=true|false  fault_dashboard (status + fault injection buttons)
   world:=test|warehouse  test = TurtleBot3 world (regression tests, default)
                          warehouse = 14 m x 10 m AMR warehouse (worlds/amr_warehouse.world)
+  safe_resume:=true|false  Nav2 system only: Nav2 commands need the Safe Resume permit (fail-closed),
+                         latency probe on (default false: fault 1-4 tests run without a gate)
   demo:=true|false       integrated demo: robot drives a 0.4 m circle so it can drive for minutes
                          (test world: between four pillars around (-0.55, -0.55);
                           warehouse: inside the start zone around (0, -3.5))
@@ -46,6 +48,7 @@ def generate_launch_description():
         DeclareLaunchArgument('dashboard', default_value='false'),
         DeclareLaunchArgument('demo', default_value='false'),
         DeclareLaunchArgument('world', default_value='test'),
+        DeclareLaunchArgument('safe_resume', default_value='false'),
         OpaqueFunction(function=nodes),
     ])
 
@@ -62,6 +65,7 @@ def nodes(context):
     world = os.path.join(share, 'worlds', cfg['world'])
     model = os.path.join(share, 'models', 'turtlebot3_burger_fault', 'model.sdf')
     gui = LaunchConfiguration('gui')
+    safe_resume = LaunchConfiguration('safe_resume').perform(context) == 'true'
 
     return [
         IncludeLaunchDescription(
@@ -87,9 +91,10 @@ def nodes(context):
              respawn=True, respawn_delay=1.2),
         Node(package='fault_injector', executable='nav_fault_injector', output='screen'),
         Node(package='fault_injector', executable='control_delay_injector', output='screen',
-             parameters=[os.path.join(share, 'config', 'control_delay.yaml')]),
+             parameters=[os.path.join(share, 'config', 'control_delay.yaml'),
+                         {'probe_rate': 5.0 if safe_resume else 0.0}]),
         Node(package='fault_monitor', executable='speed_limiter', output='screen',
-             parameters=[{'use_sim_time': True}]),
+             parameters=[{'use_sim_time': True, 'require_permit': safe_resume}]),
         Node(package='twist_mux', executable='twist_mux', output='screen',
              parameters=[os.path.join(share, 'config', 'twist_mux.yaml')],
              remappings=[('/cmd_vel_out', '/cmd_vel')]),

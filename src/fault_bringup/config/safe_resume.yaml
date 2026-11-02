@@ -1,0 +1,50 @@
+# Safe Resume Gate (fault_monitor/safe_resume_gate.py). Units: s, m, m/s, m/s^2.
+safe_resume_gate:
+  ros__parameters:
+    use_sim_time: true
+    rate: 20.0                  # evaluation + permit publish rate [Hz]
+    stable_time: 3.0            # all conditions must hold this long before APPROVED
+    max_tick_gap: 0.5           # wall-clock gap between evaluations that counts as a stalled gate -> revoke
+    waiting_timeout: 8.0        # WAITING -> BLOCKED if the system did not normalize
+
+    health_max_age: 0.5         # health_monitor liveness (/health/scan_age, 20 Hz)
+
+    # LiDAR (5 Hz sensor)
+    scan_max_age: 0.5
+    scan_min_rate: 3.0
+    scan_min_usable: 0.9        # fraction of rays that are not NaN
+    scan_min_returns: 20        # real returns needed (an all-inf scan is not evidence of free space)
+
+    # Odometry (30 Hz; plausibility itself comes from health_monitor)
+    odom_max_age: 0.5
+    odom_min_rate: 10.0
+    odom_stable_window: 2.0     # no rejected sample for this long
+
+    # Nav2 (/nav2/stack_ok 5 Hz, nav2_recovery_manager state must be IDLE)
+    nav2_max_age: 1.0
+
+    # Localization (/amcl_pose)
+    amcl_max_age: 4.0
+    amcl_ping_period: 2.0       # request_nomotion_update when the pose is older (AMCL is silent at rest)
+    amcl_frame: map
+    # Fault-free mission without gate limits (2 runs): xy max 0.68 m^2, yaw max 0.22 rad^2, real error max 0.38 m.
+    # AMCL spreads while driving and tightens at rest, so the limit to start is stricter than the one to continue.
+    amcl_max_xy_cov: 0.25       # to be approved [m^2] (sigma 0.5 m = half of the 1 m narrow aisle)
+    amcl_max_yaw_cov: 0.25      # to be approved [rad^2] (sigma ~29 deg)
+    amcl_hold_max_xy_cov: 1.0   # to stay approved [m^2] (above the measured maximum)
+    amcl_hold_max_yaw_cov: 0.40 # to stay approved [rad^2] (above the measured maximum)
+
+    # Control (/control/latency_sec)
+    control_max_age: 1.5
+    control_max_latency: 0.10       # to be approved (= ctrl_warning_latency)
+    control_hold_max_latency: 0.50  # to stay approved (= ctrl_critical_latency)
+
+    # Forward clearance: speed * (reaction_time + latency) + speed^2 / (2 * max_decel) + margin + radius
+    resume_speed: 0.20          # speed used while stopped (Nav2 max_vel_x)
+    reaction_time: 0.25         # gate tick + relay + twist_mux + diff drive
+    max_decel: 0.5              # conservative (Gazebo diff drive: 1.0)
+    safety_margin: 0.10
+    robot_radius: 0.105
+    corridor_half_width: 0.155  # robot_radius + 0.05
+    laser_x_offset: -0.032      # base_scan x in the robot frame (model.sdf)
+    max_nan_ratio: 0.1          # NaN rays allowed in the forward cone
