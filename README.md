@@ -11,10 +11,6 @@
 
 **Fault response continues beyond the emergency stop:** a robot may resume its warehouse delivery only after its safety checks pass. A **read-only mobile monitor** makes the current status, fault cause, recovery stage and mission progress visible to an operator on a phone, with no separate app or account.
 
-![Two actual mobile AMR Monitor states: NORMAL / Safe Resume APPROVED and 5/5 waypoint delivery completed](docs/images/mobile_monitoring_showcase.webp)
-
-*Actual mobile monitoring views from the home-network demonstration — normal operation (left) and 5/5 delivery mission completed (right). The QR link is generated dynamically for the current local network.*
-
 | Feature | Implementation / verification |
 |---|---|
 | **Safe Resume Gate** | LiDAR, validated odometry, Nav2 lifecycle, AMCL localization, forward obstacle clearance, control latency, and overall monitor health; approval after 3 s of stable valid conditions. |
