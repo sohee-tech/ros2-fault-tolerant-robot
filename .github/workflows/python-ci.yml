@@ -1,0 +1,37 @@
+name: Python CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python-tests:
+    name: Python unit tests
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+          cache-dependency-path: src/fault_web/requirements.txt
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest 'qrcode>=7.4,<9'
+
+      - name: Run ROS-independent Python unit tests
+        env:
+          PYTHONPATH: src/fault_web
+        run: |
+          python -m pytest -q             src/fault_web/test/test_alert_engine.py             src/fault_web/test/test_visits.py
