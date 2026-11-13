@@ -1,5 +1,7 @@
 # ROS2 Fault-Tolerant Autonomous Mobile Robot
 
+[![Python CI](https://github.com/sohee-tech/ros2-fault-tolerant-robot/actions/workflows/python-ci.yml/badge.svg)](https://github.com/sohee-tech/ros2-fault-tolerant-robot/actions/workflows/python-ci.yml)
+
 **Fault diagnosis, degraded control, safe stop, and recovery during Nav2 warehouse missions.**
 
 > **한 줄 요약:** Nav2로 창고 waypoint 임무를 수행하는 TurtleBot3에서 LiDAR·Odometry·제어 지연·Navigation 프로세스 이상을 실제로 주입하고, 고장 수준에 따라 **감속 → Safe Stop → 복구 → 임무 재개**를 수행하는 ROS2 기반 fault-tolerant AMR 시스템입니다.
